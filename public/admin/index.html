@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin — Maison Bennani</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body>
+
+<div class="login-wrap" id="loginWrap">
+  <div class="login-card">
+    <h1>Maison Bennani<br><span style="font-size:.9rem;color:var(--muted);letter-spacing:2px">ADMIN</span></h1>
+    <form id="loginForm">
+      <label>Username</label><input required id="loginUser" autocomplete="username">
+      <label>Password</label><input required id="loginPass" type="password" autocomplete="current-password">
+      <button class="btn" type="submit">Sign In</button>
+      <div class="error-msg" id="loginError"></div>
+    </form>
+  </div>
+</div>
+
+<div class="app" id="app">
+  <div class="topbar">
+    <h1>Maison Bennani — Admin</h1>
+    <div style="display:flex;align-items:center;gap:14px">
+      <span class="who" id="whoAmI"></span>
+      <button class="logout-btn" onclick="logout()">Log out</button>
+    </div>
+  </div>
+  <div class="tabs">
+    <button data-tab="products" class="active">Products</button>
+    <button data-tab="orders">Orders</button>
+    <button data-tab="settings">Delivery & Settings</button>
+    <a href="/" target="_blank" class="logout-btn" style="align-self:center">View store ↗</a>
+  </div>
+  <div class="content" id="content"></div>
+</div>
+
+<!-- Product modal -->
+<div class="modal-overlay" id="productModalOverlay">
+  <div class="modal">
+    <h2 id="productModalTitle">Add Product</h2>
+    <form id="productForm">
+      <input type="hidden" id="pfId">
+      <label>Product name</label><input required id="pfName">
+      <label>Category</label>
+      <select id="pfCategory"><option>Men</option><option>Women</option><option>Gift Sets</option></select>
+      <label>Price (DH)</label><input required type="number" step="0.01" id="pfPrice">
+      <label>Compare-at price (optional, shows as strikethrough)</label><input type="number" step="0.01" id="pfCompareAt">
+      <label>Stock quantity</label><input required type="number" id="pfStock">
+      <label>Description</label><textarea id="pfDescription" rows="3"></textarea>
+      <label>Product image</label><input type="file" id="pfImage" accept="image/png,image/jpeg,image/webp">
+      <img class="preview" id="pfPreview" style="display:none">
+      <label style="display:flex;align-items:center;gap:8px;margin-top:14px"><input type="checkbox" id="pfActive" style="width:auto" checked> Active / visible in store</label>
+      <div class="actions">
+        <button type="button" class="btn secondary" onclick="closeProductModal()">Cancel</button>
+        <button type="submit" class="btn">Save Product</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="/admin/admin.js"></script>
+</body>
+</html>
