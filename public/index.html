@@ -5,10 +5,46 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Maison Bennani — Fine Fragrances</title>
 <meta name="description" content="Maison Bennani — premium perfumes for Men, Women and curated Gift Sets. Cash on Delivery across Morocco.">
+<meta name="theme-color" content="#0b0b0a">
 <link rel="icon" href="data:,">
+<link rel="preload" href="/fonts/inter-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/cormorant-garamond-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/css/style.css">
+<script src="/js/early.js"></script>
 </head>
 <body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="bottle" viewBox="0 0 100 160">
+    <rect x="38" y="10" width="24" height="16" rx="3" fill="#c9a24b" opacity=".55"/>
+    <rect x="42" y="4" width="16" height="10" rx="2" fill="#c9a24b" opacity=".7"/>
+    <path d="M30 30h40l6 20v96a8 8 0 0 1-8 8H32a8 8 0 0 1-8-8V50l6-20z" fill="none" stroke="#c9a24b" stroke-width="2" opacity=".65"/>
+    <rect x="26" y="70" width="48" height="70" rx="4" fill="#c9a24b" opacity=".12"/>
+  </symbol>
+</svg>
+
+<!-- Landing picker: shown once per visit before the store itself -->
+<div id="landingPicker" class="landing-picker">
+  <div class="landing-inner">
+    <div class="brand" style="margin-bottom:28px;align-items:center">
+      <span class="name" style="font-size:1.8rem">MAISON BENNANI</span>
+      <span class="tag">PARFUMS DE LUXE</span>
+    </div>
+    <h1 class="landing-title">What are you shopping for?</h1>
+    <div class="landing-options">
+      <button class="landing-btn" data-cat="Men">
+        <span class="landing-btn-label">Men</span>
+      </button>
+      <button class="landing-btn" data-cat="Women">
+        <span class="landing-btn-label">Women</span>
+      </button>
+      <button class="landing-btn" data-cat="Gift Sets">
+        <span class="landing-btn-label">Gift Sets</span>
+      </button>
+    </div>
+    <button class="landing-skip" id="landingSkip">Browse everything</button>
+  </div>
+</div>
 
 <header>
   <div class="topbar">
@@ -44,10 +80,21 @@
 
 <div class="grid" id="grid"></div>
 
+<section class="boutique-section">
+  <div class="boutique-inner">
+    <h2 class="boutique-title">Visit Our Boutique</h2>
+    <p class="boutique-sub">Casablanca, Morocco</p>
+    <div class="boutique-links">
+      <a href="https://maps.apple.com/place?coordinate=33.541497%2C-7.586448&name=Lieu%2520marqu%25C3%25A9%2520d%25E2%2580%2599un%2520rep%25C3%25A8re&map=explore" class="boutique-btn" target="_blank" rel="noopener">Open in Apple Maps</a>
+      <a href="https://www.google.com/maps?q=33.541497,-7.586448" class="boutique-btn" target="_blank" rel="noopener">Open in Google Maps</a>
+      <a href="#" id="waBoutique" class="boutique-btn" target="_blank" rel="noopener" hidden>Chat on WhatsApp</a>
+    </div>
+  </div>
+</section>
+
 <footer>
   © <span id="year"></span> Maison Bennani. All rights reserved.
   <br>Cash on Delivery available across Morocco.
-  <a href="/admin">Admin</a>
 </footer>
 
 <!-- Product detail -->
@@ -75,7 +122,6 @@
       <label>Phone number</label><input required id="cPhone" type="tel" autocomplete="tel" placeholder="06XXXXXXXX">
       <label>City</label><select id="cCity"></select>
       <label>Full address</label><textarea required id="cAddress" rows="3" placeholder="Street, building, floor, landmark..."></textarea>
-      <label>Email (optional — get order updates by email)</label><input type="email" id="cEmail" placeholder="you@example.com">
       <label>Payment method</label>
       <input value="Cash on Delivery (pay when you receive your order)" disabled>
       <div id="coTotals" style="margin-top:16px"></div>
@@ -90,6 +136,10 @@
   <div class="sheet-head"><h2 id="acctTitle">Account</h2><button class="close-btn" onclick="Account.close()">✕</button></div>
   <div class="sheet-body" id="acctBody"></div>
 </div>
+
+<a id="waFloat" class="wa-float" href="#" target="_blank" rel="noopener" aria-label="Chat with us on WhatsApp" hidden>
+  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.3L3 20.5l1.8-5.4A8.4 8.4 0 1 1 21 11.5z"/><path d="M9 9.5c.3 2 2.5 4.2 4.5 4.5l1.2-1.2-1.8-1-.8.7c-.7-.3-1.6-1.2-1.9-1.9l.7-.8-1-1.8z" fill="currentColor" stroke="none"/></svg>
+</a>
 
 <div id="toast"></div>
 

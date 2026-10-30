@@ -1,27 +1,28 @@
 const express = require('express');
 const multer = require('multer');
+const sharp = require('sharp');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const db = require('../db');
 const { requireAdmin } = require('../middleware/auth');
+const { UPLOAD_DIR } = require('../config');
+const { isBundle, enrichProduct } = require('../utils/bundles');
 
 const router = express.Router();
+const VALID_CATEGORIES = ['Men', 'Women', 'Gift Sets'];
 
-const UPLOAD_DIR = path.join(__dirname, '..', 'public', 'uploads');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    cb(null, 'img_' + crypto.randomBytes(8).toString('hex') + ext);
-  }
-});
+// ---------- Images ----------
+// Photos are resized and converted to WebP when uploaded, in two sizes:
+//   • a small one for the product grid (fast to load on phones)
+//   • a larger one for the product page
+// Phone photos are often 3–8 MB; the files customers actually download are ~30–150 KB.
 const ALLOWED = ['.jpg', '.jpeg', '.png', '.webp'];
 const upload = multer({
-  storage,
-  limits: { fileSize: 5 * 1024 * 1024 },
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
     if (!ALLOWED.includes(ext)) return cb(new Error('Only jpg, png or webp images are allowed'));
@@ -29,96 +30,212 @@ const upload = multer({
   }
 });
 
+async function processImage(buffer) {
+  const base = 'img_' + crypto.randomBytes(8).toString('hex');
+  const img = sharp(buffer).rotate(); // rotate() fixes sideways phone photos; metadata (incl. GPS) is dropped
+  await Promise.all([
+    img.clone()
+      .resize({ width: 1200, height: 1200, fit: 'inside', withoutEnlargement: true })
+      .webp({ quality: 80 })
+      .toFile(path.join(UPLOAD_DIR, base + '.webp')),
+    img.clone()
+      .resize({ width: 480, height: 480, fit: 'inside', withoutEnlargement: true })
+      .webp({ quality: 72 })
+      .toFile(path.join(UPLOAD_DIR, base + '-thumb.webp'))
+  ]);
+  return { image: '/uploads/' + base + '.webp', imageThumb: '/uploads/' + base + '-thumb.webp' };
+}
+
+// Deletes a product's photo files. Only ever touches files inside UPLOAD_DIR
+// (path.basename strips any folder parts), so a bad stored value can't point elsewhere.
+function removeProductImages(p) {
+  for (const ref of [p.image, p.imageThumb]) {
+    if (ref && ref.startsWith('/uploads/')) {
+      fs.unlink(path.join(UPLOAD_DIR, path.basename(ref)), () => {});
+    }
+  }
+}
+
+// ---------- Helpers ----------
+function byIdMap(products) {
+  return new Map(products.map(p => [p.id, p]));
+}
+
+// What shoppers see: for gift-set bundles, stock is the number of complete sets available.
+function publicProduct(p, byId) {
+  const e = enrichProduct(p, byId);
+  const { bundle, availableStock, ...rest } = e;
+  if (isBundle(p)) rest.stock = availableStock;
+  return rest;
+}
+
+function cleanText(v, max) {
+  return String(v == null ? '' : v).trim().slice(0, max);
+}
+
+// Validates the list of perfumes chosen for a gift set. Only Men/Women perfumes can go in a set.
+function parseBundle(raw, products, selfId) {
+  let list;
+  try { list = typeof raw === 'string' ? JSON.parse(raw || '[]') : raw; } catch (e) { return { error: 'Invalid gift set contents' }; }
+  if (!Array.isArray(list)) return { error: 'Invalid gift set contents' };
+  if (list.length > 20) return { error: 'A gift set can include at most 20 different perfumes' };
+
+  const byId = byIdMap(products);
+  const merged = new Map();
+  for (const item of list) {
+    const c = byId.get(item && item.productId);
+    if (!c || c.id === selfId) return { error: 'One of the selected perfumes no longer exists' };
+    if (c.category === 'Gift Sets') return { error: 'Only perfumes from Men or Women can be added to a gift set' };
+    const qty = Math.min(10, Math.max(1, parseInt(item.qty, 10) || 1));
+    merged.set(c.id, (merged.get(c.id) || 0) + qty);
+  }
+  return { bundle: [...merged.entries()].map(([productId, qty]) => ({ productId, qty: Math.min(qty, 10) })) };
+}
+
+function setsUsing(productId, products) {
+  return products.filter(p => isBundle(p) && p.bundle.some(b => b.productId === productId));
+}
+
 // ---------- PUBLIC ----------
 
 // GET /api/products?category=Men&q=rose&sort=low
 router.get('/', (req, res) => {
   const data = db.read();
+  const byId = byIdMap(data.products);
   let list = data.products.filter(p => p.active);
   const { category, q, sort } = req.query;
   if (category && category !== 'All') list = list.filter(p => p.category === category);
   if (q) {
-    const needle = q.toLowerCase();
+    const needle = String(q).toLowerCase();
     list = list.filter(p => p.name.toLowerCase().includes(needle));
   }
   if (sort === 'low') list = [...list].sort((a, b) => a.price - b.price);
   if (sort === 'high') list = [...list].sort((a, b) => b.price - a.price);
-  res.json(list);
+  res.set('Cache-Control', 'public, max-age=20, stale-while-revalidate=60');
+  res.json(list.map(p => publicProduct(p, byId)));
 });
 
 router.get('/:id', (req, res) => {
   const data = db.read();
   const p = data.products.find(x => x.id === req.params.id && x.active);
   if (!p) return res.status(404).json({ error: 'Product not found' });
-  res.json(p);
+  res.json(publicProduct(p, byIdMap(data.products)));
 });
 
 // ---------- ADMIN ----------
 
-// List all products including inactive/out-of-stock, for the admin table
+// All products including hidden ones, with the raw bundle and the computed stock for sets
 router.get('/admin/all', requireAdmin, (req, res) => {
   const data = db.read();
-  res.json(data.products);
+  const byId = byIdMap(data.products);
+  res.json(data.products.map(p => enrichProduct(p, byId)));
 });
 
-router.post('/admin', requireAdmin, upload.single('image'), (req, res) => {
-  const data = db.read();
-  const { name, category, price, compareAtPrice, stock, description } = req.body;
-  if (!name || !category || price === undefined) {
-    return res.status(400).json({ error: 'name, category and price are required' });
-  }
-  const product = {
-    id: db.id('prod'),
-    name,
-    category,
-    price: parseFloat(price) || 0,
-    compareAtPrice: compareAtPrice ? parseFloat(compareAtPrice) : null,
-    stock: stock !== undefined ? parseInt(stock, 10) : 0,
-    description: description || '',
-    image: req.file ? '/uploads/' + req.file.filename : null,
-    active: true,
-    createdAt: new Date().toISOString()
-  };
-  data.products.push(product);
-  db.write(data);
-  res.status(201).json(product);
-});
-
-router.put('/admin/:id', requireAdmin, upload.single('image'), (req, res) => {
-  const data = db.read();
-  const p = data.products.find(x => x.id === req.params.id);
-  if (!p) return res.status(404).json({ error: 'Product not found' });
-
-  const { name, category, price, compareAtPrice, stock, description, active } = req.body;
-  if (name !== undefined) p.name = name;
-  if (category !== undefined) p.category = category;
-  if (price !== undefined) p.price = parseFloat(price) || 0;
-  if (compareAtPrice !== undefined) p.compareAtPrice = compareAtPrice === '' ? null : parseFloat(compareAtPrice);
-  if (stock !== undefined) p.stock = parseInt(stock, 10) || 0;
-  if (description !== undefined) p.description = description;
-  if (active !== undefined) p.active = active === 'true' || active === true;
-
-  if (req.file) {
-    // remove old image file if it was an uploaded one
-    if (p.image && p.image.startsWith('/uploads/')) {
-      const oldPath = path.join(__dirname, '..', 'public', p.image);
-      fs.unlink(oldPath, () => {});
+router.post('/admin', requireAdmin, upload.single('image'), async (req, res) => {
+  try {
+    const data = db.read();
+    const { category, price, compareAtPrice, stock } = req.body;
+    const name = cleanText(req.body.name, 120);
+    if (!name || !category || price === undefined) {
+      return res.status(400).json({ error: 'name, category and price are required' });
     }
-    p.image = '/uploads/' + req.file.filename;
-  }
+    if (!VALID_CATEGORIES.includes(category)) {
+      return res.status(400).json({ error: 'Category must be Men, Women or Gift Sets' });
+    }
 
-  db.write(data);
-  res.json(p);
+    let bundle = [];
+    if (category === 'Gift Sets' && req.body.bundle) {
+      const parsed = parseBundle(req.body.bundle, data.products, null);
+      if (parsed.error) return res.status(400).json({ error: parsed.error });
+      bundle = parsed.bundle;
+    }
+
+    const images = req.file ? await processImage(req.file.buffer) : { image: null, imageThumb: null };
+    const product = {
+      id: db.id('prod'),
+      name,
+      category,
+      price: Math.max(0, parseFloat(price) || 0),
+      compareAtPrice: compareAtPrice ? parseFloat(compareAtPrice) : null,
+      stock: stock !== undefined && stock !== '' ? Math.max(0, parseInt(stock, 10) || 0) : 0,
+      description: cleanText(req.body.description, 2000),
+      bundle,
+      ...images,
+      active: true,
+      createdAt: new Date().toISOString()
+    };
+    data.products.push(product);
+    db.write(data);
+    res.status(201).json(enrichProduct(product, byIdMap(data.products)));
+  } catch (err) {
+    console.error('Create product failed:', err.message);
+    res.status(400).json({ error: "Couldn't save the product — if you added a photo, make sure it's a valid image." });
+  }
+});
+
+router.put('/admin/:id', requireAdmin, upload.single('image'), async (req, res) => {
+  try {
+    const data = db.read();
+    const p = data.products.find(x => x.id === req.params.id);
+    if (!p) return res.status(404).json({ error: 'Product not found' });
+
+    const { category, price, compareAtPrice, stock, active } = req.body;
+    if (req.body.name !== undefined) {
+      const name = cleanText(req.body.name, 120);
+      if (!name) return res.status(400).json({ error: 'Name cannot be empty' });
+      p.name = name;
+    }
+    if (category !== undefined) {
+      if (!VALID_CATEGORIES.includes(category)) {
+        return res.status(400).json({ error: 'Category must be Men, Women or Gift Sets' });
+      }
+      if (category === 'Gift Sets' && setsUsing(p.id, data.products).length > 0) {
+        return res.status(409).json({ error: 'This perfume is part of a gift set, so it cannot become a gift set itself. Remove it from the set first.' });
+      }
+      p.category = category;
+    }
+    if (p.category !== 'Gift Sets') {
+      p.bundle = [];
+    } else if (req.body.bundle !== undefined) {
+      const parsed = parseBundle(req.body.bundle, data.products, p.id);
+      if (parsed.error) return res.status(400).json({ error: parsed.error });
+      p.bundle = parsed.bundle;
+    }
+    if (price !== undefined) p.price = Math.max(0, parseFloat(price) || 0);
+    if (compareAtPrice !== undefined) p.compareAtPrice = compareAtPrice === '' ? null : parseFloat(compareAtPrice);
+    if (stock !== undefined && stock !== '') p.stock = Math.max(0, parseInt(stock, 10) || 0);
+    if (req.body.description !== undefined) p.description = cleanText(req.body.description, 2000);
+    if (active !== undefined) p.active = active === 'true' || active === true;
+
+    if (req.file) {
+      const images = await processImage(req.file.buffer);
+      removeProductImages(p); // delete the old photo files
+      p.image = images.image;
+      p.imageThumb = images.imageThumb;
+    }
+
+    db.write(data);
+    res.json(enrichProduct(p, byIdMap(data.products)));
+  } catch (err) {
+    console.error('Update product failed:', err.message);
+    res.status(400).json({ error: "Couldn't save the product — if you added a photo, make sure it's a valid image." });
+  }
 });
 
 router.delete('/admin/:id', requireAdmin, (req, res) => {
   const data = db.read();
   const idx = data.products.findIndex(x => x.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Product not found' });
-  const [removed] = data.products.splice(idx, 1);
-  if (removed.image && removed.image.startsWith('/uploads/')) {
-    fs.unlink(path.join(__dirname, '..', 'public', removed.image), () => {});
+
+  const usedIn = setsUsing(req.params.id, data.products);
+  if (usedIn.length > 0) {
+    return res.status(409).json({
+      error: `This perfume is part of the gift set "${usedIn.map(s => s.name).join('", "')}". Remove it from the set first, or hide it instead of deleting.`
+    });
   }
+
+  const [removed] = data.products.splice(idx, 1);
+  removeProductImages(removed);
   db.write(data);
   res.json({ ok: true });
 });

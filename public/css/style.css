@@ -1,4 +1,8 @@
-@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600&display=swap');
+/* Fonts are hosted on this site (no request to Google) — faster, and nothing leaks to third parties. */
+@font-face{font-family:'Inter'; font-style:normal; font-weight:400; font-display:swap; src:url('/fonts/inter-latin-400-normal.woff2') format('woff2');}
+@font-face{font-family:'Inter'; font-style:normal; font-weight:600; font-display:swap; src:url('/fonts/inter-latin-600-normal.woff2') format('woff2');}
+@font-face{font-family:'Cormorant Garamond'; font-style:normal; font-weight:600; font-display:swap; src:url('/fonts/cormorant-garamond-latin-600-normal.woff2') format('woff2');}
+
 
 :root{
   --black:#0b0b0a; --near-black:#141311; --panel:#1a1917; --line:#2a2822;
@@ -56,7 +60,7 @@ nav.cats button.active, nav.cats button:hover{border-color:var(--gold); color:va
 .card{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; display:flex; flex-direction:column; transition:transform .2s, border-color .2s; cursor:pointer;}
 .card:hover{transform:translateY(-3px); border-color:var(--gold);}
 .thumb{aspect-ratio:4/5; background:linear-gradient(160deg,#1e1c17,#0c0c0b); display:flex; align-items:center; justify-content:center; position:relative;}
-.thumb img{width:100%; height:100%; object-fit:cover;}
+.thumb img{width:100%; height:100%; object-fit:cover; position:absolute; inset:0;}
 .thumb .tag-sale{position:absolute; top:10px; left:10px; background:var(--gold); color:#111; font-size:.62rem; font-weight:700; letter-spacing:1px; padding:3px 8px; border-radius:4px;}
 .thumb .tag-out{position:absolute; top:10px; right:10px; background:#2a2822; color:var(--muted); font-size:.6rem; padding:3px 8px; border-radius:4px;}
 .placeholder-bottle{width:38%; opacity:.55;}
@@ -110,8 +114,49 @@ form input:focus, form select:focus, form textarea:focus{outline:1px solid var(-
 #toast{position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(20px); background:var(--panel); border:1px solid var(--gold); color:var(--cream); padding:12px 20px; border-radius:8px; font-size:.85rem; z-index:200; opacity:0; pointer-events:none; transition:.25s;}
 #toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
 
+.boutique-section{padding:50px 20px; text-align:center; border-top:1px solid var(--line); background:radial-gradient(ellipse at 50% 0%, #161410 0%, #0b0b0a 70%);}
+.boutique-title{color:var(--gold-soft); font-size:1.6rem; font-weight:600;}
+.boutique-sub{color:var(--muted); margin-top:8px; font-size:.9rem;}
+.boutique-links{display:flex; gap:14px; justify-content:center; flex-wrap:wrap; margin-top:22px;}
+.boutique-btn{border:1px solid var(--gold); color:var(--gold-soft); padding:11px 22px; border-radius:24px; font-size:.78rem; letter-spacing:1px; text-transform:uppercase; transition:.2s;}
+.boutique-btn:hover{background:rgba(201,162,75,.1);}
+
 footer{text-align:center; padding:36px 20px; color:var(--muted); font-size:.75rem; border-top:1px solid var(--line);}
 footer a{color:var(--gold-soft); font-size:.72rem; margin-left:6px;}
 
 .skeleton{background:linear-gradient(90deg,#1c1a16 25%,#232019 37%,#1c1a16 63%); background-size:400% 100%; animation:sk 1.4s ease infinite;}
 @keyframes sk{0%{background-position:100% 50%}100%{background-position:0 50%}}
+
+/* Landing picker */
+.landing-picker{position:fixed; inset:0; z-index:500; background:radial-gradient(ellipse at 50% 20%, #1c1a15 0%, #0b0b0a 70%); display:flex; align-items:center; justify-content:center; padding:24px; transition:opacity .3s, visibility .3s;}
+.landing-picker.hide{opacity:0; visibility:hidden; pointer-events:none;}
+.landing-inner{max-width:420px; width:100%; text-align:center; display:flex; flex-direction:column; align-items:center;}
+.landing-title{font-size:1.5rem; color:var(--cream); font-weight:500; margin-bottom:28px;}
+.landing-options{display:flex; flex-direction:column; gap:14px; width:100%;}
+.landing-btn{border:1px solid var(--line); background:var(--near-black); color:var(--gold-soft); padding:18px; border-radius:10px; font-family:'Cormorant Garamond',serif; font-size:1.3rem; letter-spacing:2px; text-transform:uppercase; transition:.2s; width:100%;}
+.landing-btn:hover, .landing-btn:active{border-color:var(--gold); background:rgba(201,162,75,.08); transform:translateY(-2px);}
+.landing-skip{margin-top:26px; background:none; border:none; color:var(--muted); font-size:.82rem; text-decoration:underline; text-underline-offset:3px;}
+
+
+html.seen .landing-picker{display:none;}
+
+/* Gift set contents */
+.set-badge{position:absolute; bottom:10px; left:10px; background:rgba(11,11,10,.82); color:var(--gold-soft); font-size:.62rem; letter-spacing:1px; padding:3px 8px; border-radius:4px; border:1px solid var(--line);}
+.inside{margin-top:18px; border-top:1px solid var(--line); padding-top:14px;}
+.inside h4{font-family:'Cormorant Garamond',serif; color:var(--gold-soft); font-size:1.1rem; margin-bottom:10px; font-weight:600;}
+.inside-row{display:flex; align-items:center; gap:12px; padding:8px 0; border-bottom:1px solid var(--line);}
+.inside-row .mini{width:46px; height:46px; border-radius:6px; background:#0e0d0c; overflow:hidden; display:flex; align-items:center; justify-content:center; flex-shrink:0;}
+.inside-row .mini img{width:100%; height:100%; object-fit:cover;}
+.inside-row .mini svg{width:55%; opacity:.6;}
+.inside-row .nm{flex:1; font-size:.85rem;}
+.inside-row .nm small{display:block; color:var(--muted); font-size:.7rem; margin-top:2px;}
+.inside-row .q{color:var(--muted); font-size:.8rem;}
+.saving{color:var(--gold-soft); font-size:.78rem; margin-top:6px;}
+.cart-inside{color:var(--muted); font-size:.72rem; margin-top:2px;}
+
+/* WhatsApp */
+.wa-float{position:fixed; right:16px; bottom:calc(16px + env(safe-area-inset-bottom,0px)); width:54px; height:54px; border-radius:50%; background:var(--gold); color:#141311; display:flex; align-items:center; justify-content:center; z-index:60; box-shadow:0 6px 20px rgba(0,0,0,.45); transition:transform .15s;}
+.wa-float:hover{transform:scale(1.06);}
+.wa-float[hidden], .boutique-btn[hidden]{display:none;}
+.note{color:var(--muted); font-size:.8rem; line-height:1.5;}
+.note a{color:var(--gold-soft); text-decoration:underline; text-underline-offset:3px;}

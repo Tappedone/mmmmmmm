@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const DATA_DIR = path.join(__dirname, 'data');
+const { DATA_DIR } = require('./config');
 const FILE = path.join(DATA_DIR, 'store.json');
 
 function id(prefix) {
@@ -14,30 +14,24 @@ function id(prefix) {
 }
 
 function seed() {
-  const cats = ['Men', 'Women', 'Gift Sets'];
-  const names = {
-    Men: ['Noir Absolu', 'Oud Royal', 'Steel Vetiver', 'Midnight Cedar', 'Sultan d\'Ambre'],
-    Women: ['Rose Éclat', 'Jasmin Doré', 'Velvet Iris', 'Blanc de Fleur', 'Miel Sauvage'],
-    'Gift Sets': ['Duo Prestige', 'Trio Signature', 'Coffret Élégance']
-  };
+  // A live site starts with an EMPTY catalog so fake sample products never reach real customers.
+  // Local testing (anything that isn't NODE_ENV=production) gets a few samples to look at.
   const products = [];
-  let i = 1;
-  for (const cat of cats) {
-    for (const n of names[cat]) {
-      products.push({
-        id: id('prod'),
-        name: n,
-        category: cat,
-        price: cat === 'Gift Sets' ? 400 + i * 15 : 220 + i * 9,
-        compareAtPrice: null,
-        stock: 15 + i,
-        description: 'A premium fragrance crafted with rare essences, designed for lasting presence. Replace this description and photo from the admin panel.',
-        image: null,
-        active: true,
-        createdAt: new Date().toISOString()
-      });
-      i++;
-    }
+  if (process.env.NODE_ENV !== 'production') {
+    const now = new Date().toISOString();
+    const mk = (name, category, price, stock, extra = {}) => {
+      const p = {
+        id: id('prod'), name, category, price, compareAtPrice: null, stock,
+        description: 'Sample product — replace this description and photo from the admin panel.',
+        bundle: [], image: null, imageThumb: null, active: true, createdAt: now, ...extra
+      };
+      products.push(p);
+      return p;
+    };
+    const men = ['Noir Absolu', 'Oud Royal', 'Steel Vetiver'].map((n, i) => mk(n, 'Men', 229 + i * 20, 20));
+    const women = ['Rose Éclat', 'Jasmin Doré', 'Velvet Iris'].map((n, i) => mk(n, 'Women', 249 + i * 20, 20));
+    mk('Duo Prestige', 'Gift Sets', 420, 0, { compareAtPrice: men[0].price + women[0].price, bundle: [{ productId: men[0].id, qty: 1 }, { productId: women[0].id, qty: 1 }] });
+    mk('Trio Signature', 'Gift Sets', 590, 0, { bundle: [{ productId: men[1].id, qty: 1 }, { productId: women[1].id, qty: 1 }, { productId: women[2].id, qty: 1 }] });
   }
   return {
     products,
@@ -48,7 +42,8 @@ function seed() {
       freeDeliveryThreshold: 600,
       cityFees: { Casablanca: 25, Rabat: 25, Marrakech: 35, Fes: 35, Tangier: 35, Agadir: 40, Meknes: 35, Oujda: 45, Kenitra: 30 },
       storeName: 'Maison Bennani',
-      currency: 'DH'
+      currency: 'DH',
+      whatsappNumber: ''
     }
   };
 }
@@ -62,10 +57,30 @@ function ensureFile() {
 
 function read() {
   ensureFile();
-  const data = JSON.parse(fs.readFileSync(FILE, 'utf-8'));
-  // Migration: older store.json files (created before accounts existed) won't have this field.
+  let data;
+  try {
+    data = JSON.parse(fs.readFileSync(FILE, 'utf-8'));
+  } catch (err) {
+    console.error('store.json could not be read (' + err.message + ') — trying the newest backup...');
+    data = readNewestBackup();
+    if (!data) throw err;
+  }
+  // Migrations: older files may lack newer fields.
   if (!data.customers) data.customers = [];
+  if (!data.settings) data.settings = {};
+  if (data.settings.whatsappNumber === undefined) data.settings.whatsappNumber = '';
   return data;
+}
+
+function readNewestBackup() {
+  try {
+    const dir = path.join(DATA_DIR, 'backups');
+    const files = fs.readdirSync(dir).filter(f => f.startsWith('store-')).sort().reverse();
+    for (const f of files) {
+      try { return JSON.parse(fs.readFileSync(path.join(dir, f), 'utf-8')); } catch (e) { /* try the next one */ }
+    }
+  } catch (e) { /* no backups */ }
+  return null;
 }
 
 const BACKUP_DIR = path.join(DATA_DIR, 'backups');
@@ -84,7 +99,11 @@ function backupBeforeWrite() {
 
 function write(data) {
   backupBeforeWrite();
-  fs.writeFileSync(FILE, JSON.stringify(data, null, 2));
+  // Write to a temporary file first, then swap it in — a crash or power loss mid-write
+  // can never leave a half-written (corrupt) store.json behind.
+  const tmp = FILE + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
+  fs.renameSync(tmp, FILE);
 }
 
 module.exports = { read, write, id };

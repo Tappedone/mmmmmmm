@@ -4,7 +4,7 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "npm start",
+    "startCommand": "mkdir -p /storage/data /storage/uploads && rm -rf data public/uploads && ln -s /storage/data data && ln -s /storage/uploads public/uploads && npm start",
     "healthcheckPath": "/health",
     "healthcheckTimeout": 100,
     "restartPolicyType": "ON_FAILURE",
