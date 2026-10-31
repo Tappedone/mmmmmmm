@@ -8,6 +8,7 @@ const rateLimit = require('express-rate-limit');
 const path = require('path');
 const fs = require('fs');
 const { DATA_DIR, UPLOAD_DIR } = require('./config');
+const fieldCrypto = require('./utils/crypto');
 
 const productRoutes = require('./routes/products');
 const orderRoutes = require('./routes/orders');
@@ -26,11 +27,70 @@ if (!process.env.SESSION_SECRET) {
   }
   console.warn('⚠️  SESSION_SECRET is not set in .env — using a temporary insecure value. Set it before deploying.');
 }
-if (!process.env.ADMIN_USERNAME || !(process.env.ADMIN_PASSWORD_HASH || process.env.ADMIN_PASSWORD)) {
-  console.warn('⚠️  Admin login is not configured (ADMIN_USERNAME and ADMIN_PASSWORD or ADMIN_PASSWORD_HASH) — you will not be able to log into /admin.');
+// ---------- Start-up checks (problems show up in the logs in plain words) ----------
+function ensureWritable(dir, label) {
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    const probe = path.join(dir, '.write-test-' + process.pid);
+    fs.writeFileSync(probe, 'ok');
+    fs.unlinkSync(probe);
+    return true;
+  } catch (err) {
+    console.error(`❌ The ${label} folder cannot be used: ${dir} (${err.code || err.message})`);
+    console.error('   On Railway: make sure the volume mount path matches STORAGE_DIR / DATA_DIR / UPLOAD_DIR.');
+    console.error('   If the error is EACCES (permission denied), add the variable RAILWAY_RUN_UID with the value 0.');
+    return false;
+  }
+}
+if (!ensureWritable(DATA_DIR, 'data') | !ensureWritable(UPLOAD_DIR, 'photos')) {
+  console.error('Stopping, because products, orders and logins cannot be saved. Fix the above and redeploy.');
+  process.exit(1);
 }
 
-app.set('trust proxy', 1); // needed on Railway/Render etc. so HTTPS and visitor IPs are detected correctly
+// A stray problem in one request must never take the whole site down.
+process.on('unhandledRejection', (reason) => {
+  console.error('Unexpected error (the site keeps running):', reason && reason.message ? reason.message : reason);
+});
+
+// ---------- Visitor addresses behind Railway's proxies ----------
+// Login limits and abuse protection count attempts per visitor address. Behind a host's proxies the
+// server first sees the proxy's own (internal) address, so we trust the connection's immediate proxy
+// and any further hops that are internal/private addresses; the first public address after that is
+// the visitor. An address a visitor invents in the X-Forwarded-For header is ignored, because it
+// sits to the left of the real one. Override with TRUST_PROXY (a number of proxies, or "false") if needed.
+function isInternalAddress(ip) {
+  if (!ip) return false;
+  let a = String(ip).toLowerCase();
+  if (a.startsWith('::ffff:')) a = a.slice(7);
+  if (a === '::1') return true;
+  if (a.includes(':')) return /^(fc|fd|fe80)/.test(a); // IPv6 private / link-local
+  const p = a.split('.').map(Number);
+  if (p.length !== 4 || p.some(n => !(n >= 0 && n <= 255))) return false;
+  return p[0] === 10 || p[0] === 127 ||
+    (p[0] === 172 && p[1] >= 16 && p[1] <= 31) ||
+    (p[0] === 192 && p[1] === 168) ||
+    (p[0] === 100 && p[1] >= 64 && p[1] <= 127) || // 100.64.0.0/10 — used inside Railway's network
+    (p[0] === 169 && p[1] === 254);
+}
+function parseTrustProxy(v) {
+  if (v === 'false') return false;
+  if (/^\d+$/.test(v)) return parseInt(v, 10);
+  return v;
+}
+app.set('trust proxy', process.env.TRUST_PROXY ? parseTrustProxy(process.env.TRUST_PROXY) : (ip, hop) => hop === 0 || isInternalAddress(ip));
+
+// Say once, in the logs, which address the server thinks a visitor has — so a wrong setup is obvious.
+let addressChecked = false;
+app.use('/api', (req, res, next) => {
+  if (!addressChecked) {
+    addressChecked = true;
+    console.log(`Visitor address check: ip=${req.ip}  x-forwarded-for=${req.headers['x-forwarded-for'] || '-'}  x-real-ip=${req.headers['x-real-ip'] || '-'}`);
+    if (IS_PROD && isInternalAddress(req.ip)) {
+      console.warn('⚠️  Visitors look like they all share one internal address, so login limits would apply to everyone at once. Set the variable TRUST_PROXY to 2 (or 3) and check this line again.');
+    }
+  }
+  next();
+});
 
 // Hosts ping this to confirm the app is alive after each deploy.
 app.get('/health', (req, res) => res.status(200).json({ status: 'ok' }));
@@ -94,7 +154,9 @@ app.use(session({
   saveUninitialized: false,
   cookie: {
     httpOnly: true,
-    secure: IS_PROD,
+    // 'auto' = Secure whenever the visitor is on HTTPS (always, on the live site). Forcing it on would
+    // silently break logins if a proxy ever failed to say the connection is HTTPS.
+    secure: IS_PROD ? 'auto' : false,
     sameSite: 'lax',
     maxAge: 1000 * 60 * 60 * 8 // 8 hours
   }
@@ -138,5 +200,9 @@ app.use((err, req, res, next) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Maison Bennani running on http://localhost:${PORT}`);
+  console.log(`Maison Bennani running on http://localhost:${PORT} (${IS_PROD ? 'production' : 'development'})`);
+  console.log(`Data folder:    ${DATA_DIR}`);
+  console.log(`Photos folder:  ${UPLOAD_DIR}`);
+  console.log(`Encryption:     ${fieldCrypto.isEnabled ? 'on' : 'OFF — customer details are stored as plain text (set ENCRYPTION_KEY)'}`);
+  authRoutes.describeConfig().forEach(line => console.log(line));
 });

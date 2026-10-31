@@ -160,3 +160,7 @@ html.seen .landing-picker{display:none;}
 .wa-float[hidden], .boutique-btn[hidden]{display:none;}
 .note{color:var(--muted); font-size:.8rem; line-height:1.5;}
 .note a{color:var(--gold-soft); text-decoration:underline; text-underline-offset:3px;}
+
+
+/* Phones: fields under 16px make iPhones zoom the page when you tap them. */
+@media (max-width:700px){ input, select, textarea{ font-size:16px !important; } }

@@ -380,7 +380,7 @@ const Account = {
       document.getElementById('acctBody').innerHTML = `
         <form id="loginPane" onsubmit="Account.login(); return false">
           <label>Phone number</label><input id="loginPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="06XXXXXXXX">
-          <label>Password</label><input id="loginPassword" type="password" autocomplete="current-password">
+          <label>Password</label><input id="loginPassword" type="password" autocomplete="current-password" autocapitalize="none" autocorrect="off" spellcheck="false">
           <div id="loginErr" style="color:var(--danger);font-size:.8rem;margin-top:8px"></div>
           <button class="btn-primary" style="margin-top:16px" type="submit">Sign In</button>
           <p class="note" style="text-align:center;margin-top:12px">Forgot your password? ${help ? `<a href="${esc(help)}" target="_blank" rel="noopener">Message us on WhatsApp</a> and we'll reset it.` : 'Contact us and we will reset it for you.'}</p>
@@ -388,7 +388,7 @@ const Account = {
         </form>
         <form id="registerPane" style="display:none" onsubmit="Account.register(); return false">
           <label>Phone number (WhatsApp)</label><input id="regPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="06XXXXXXXX">
-          <label>Password (min 8 characters)</label><input id="regPassword" type="password" autocomplete="new-password">
+          <label>Password (min 8 characters)</label><input id="regPassword" type="password" autocomplete="new-password" autocapitalize="none" autocorrect="off" spellcheck="false">
           <div id="regErr" style="color:var(--danger);font-size:.8rem;margin-top:8px"></div>
           <button class="btn-primary" style="margin-top:16px" type="submit">Create Account</button>
           <p style="color:var(--muted);font-size:.82rem;margin-top:16px;text-align:center">Already have an account? <a href="#" style="color:var(--gold-soft)" onclick="Account.showLogin();return false">Sign in</a></p>

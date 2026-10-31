@@ -94,3 +94,7 @@ tr:hover td{background:rgba(255,255,255,.02);}
 .bundle-row .bl small{display:block; color:var(--muted); font-size:.7rem; margin-top:2px;}
 .bundle-row .bq{width:62px; padding:6px;}
 .bundle-summary{margin-top:10px; font-size:.82rem; line-height:1.6;}
+
+
+/* Phones: fields under 16px make iPhones zoom the page when you tap them. */
+@media (max-width:700px){ input, select, textarea{ font-size:16px !important; } }

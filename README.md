@@ -90,6 +90,25 @@ it shows a temporary password and a button that sends it to them on WhatsApp. Th
 Customers are not emailed. You can optionally get an email when an order arrives (`SMTP_*` + `SELLER_EMAIL`), but
 **Railway's Hobby plan blocks outgoing email**, so rely on the admin panel's **New** order count and WhatsApp instead.
 
+## If something doesn't work — read the logs
+Railway → your service → **Deployments** → the newest one → **View Logs**. When the site starts it prints a summary, and
+problems are written in plain words. The lines to look for:
+
+| Log line | What it means / what to do |
+|---|---|
+| `Admin login: username "…", password from ADMIN_PASSWORD, 2FA off` | The admin account is set up. Use exactly that username (capitals don't matter). |
+| `Admin login: username "(not set)"` | Add `ADMIN_USERNAME` and `ADMIN_PASSWORD` in Variables. |
+| `Both ADMIN_PASSWORD and ADMIN_PASSWORD_HASH are set` | `ADMIN_PASSWORD` is used. Delete `ADMIN_PASSWORD_HASH` so there's no confusion. |
+| `ADMIN_PASSWORD_HASH does not look like a valid hash` | Delete it and set `ADMIN_PASSWORD` instead. |
+| `ADMIN_TOTP_SECRET is not valid` | Letters A–Z and digits 2–7 only (spaces are fine). Fix it, or delete the variable to turn 2FA off. |
+| `Admin login failed (unknown username)` / `(wrong password)` / `(wrong 2FA code)` | Tells you which part didn't match. |
+| `Too many login attempts` on screen | 8 wrong tries lock that visitor for 15 minutes. Wait, or redeploy to reset. |
+| `The data folder cannot be used` | The volume path doesn't match your variables (see "Updating a site that already has products"). If it says EACCES, add `RAILWAY_RUN_UID` = `0`. |
+| `Visitors look like they all share one internal address` | Set `TRUST_PROXY` to `2` (then `3`) until the "Visitor address check" line shows a normal address. |
+
+Phone tips for `/admin`: the login box turns off auto-capitals and autocorrect, and ignores a capital first letter or a
+trailing space in the username, so a phone keyboard can't lock you out.
+
 ## Keeping it healthy
 - Back up `ENCRYPTION_KEY` and your admin password somewhere safe.
 - A few times a year, update packages (`npm audit`, `npm update`) and redeploy.
