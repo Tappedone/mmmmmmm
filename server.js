@@ -14,7 +14,6 @@ const productRoutes = require('./routes/products');
 const orderRoutes = require('./routes/orders');
 const settingsRoutes = require('./routes/settings');
 const authRoutes = require('./routes/auth');
-const customerRoutes = require('./routes/customers');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -171,7 +170,6 @@ const apiLimiter = rateLimit({
 app.use('/api', apiLimiter);
 
 app.use('/api/auth', authRoutes);
-app.use('/api/customers', customerRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/settings', settingsRoutes);

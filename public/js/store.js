@@ -7,7 +7,6 @@ const state = {
   loaded: false,
   settings: null,
   category: 'All',
-  customer: null,
   cart: readCart()
 };
 
@@ -268,18 +267,10 @@ function cityList() {
 const Checkout = {
   open() {
     if (state.cart.length === 0) return;
-    if (!state.customer) {
-      Cart.close();
-      toast('Please sign in or create an account to checkout');
-      Account.open();
-      return;
-    }
     Cart.close();
     const sel = document.getElementById('cCity');
     sel.innerHTML = cityList().map(c => `<option>${esc(c)}</option>`).join('');
     sel.onchange = Checkout.updateTotals;
-    document.getElementById('cName').value = state.customer.name || document.getElementById('cName').value || '';
-    document.getElementById('cPhone').value = state.customer.phone || '';
     Checkout.updateTotals();
     document.getElementById('coOverlay').classList.add('show');
     document.getElementById('coSheet').classList.add('show');
@@ -315,6 +306,7 @@ document.getElementById('checkoutForm').addEventListener('submit', async (e) => 
       phone: document.getElementById('cPhone').value,
       city: document.getElementById('cCity').value,
       address: document.getElementById('cAddress').value,
+      hp_check: document.getElementById('cHp').value,
       items: state.cart.map(c => ({ productId: c.id, qty: c.qty }))
     });
     state.cart = [];
@@ -338,123 +330,6 @@ document.getElementById('checkoutForm').addEventListener('submit', async (e) => 
   }
 });
 
-// ---------------- Account ----------------
-const Account = {
-  async open() {
-    document.getElementById('acctOverlay').classList.add('show');
-    document.getElementById('acctSheet').classList.add('show');
-    await Account.refresh();
-  },
-  close() {
-    document.getElementById('acctOverlay').classList.remove('show');
-    document.getElementById('acctSheet').classList.remove('show');
-  },
-  async refresh() {
-    try {
-      const res = await api('/api/customers/me');
-      state.customer = res.authenticated ? res.customer : null;
-    } catch (e) { state.customer = null; }
-    Account.render();
-  },
-  render() {
-    document.getElementById('acctTitle').textContent = state.customer ? 'My Account' : 'Sign In';
-    if (state.customer) {
-      document.getElementById('acctBody').innerHTML = `
-        <p style="color:var(--muted)">Signed in as</p>
-        <p style="font-size:1.05rem;margin-bottom:18px"><b>${esc(state.customer.phone)}</b>${state.customer.name ? '<br>' + esc(state.customer.name) : ''}</p>
-        <h3 class="serif" style="color:var(--gold-soft);margin-bottom:10px">My Orders</h3>
-        <div id="myOrdersList"><p style="color:var(--muted)">Loading...</p></div>
-        <details style="margin-top:18px">
-          <summary style="cursor:pointer;color:var(--gold-soft);font-size:.85rem">Change password</summary>
-          <form onsubmit="Account.changePassword(); return false">
-            <label>Current password</label><input id="chgCur" type="password" autocomplete="current-password">
-            <label>New password (min 8 characters)</label><input id="chgNew" type="password" autocomplete="new-password">
-            <div id="chgErr" style="color:var(--danger);font-size:.8rem;margin-top:8px"></div>
-            <button class="btn-primary" style="margin-top:12px" type="submit">Save new password</button>
-          </form>
-        </details>
-        <button class="btn-ghost" style="margin-top:18px" onclick="Account.logout()">Log Out</button>`;
-      Account.loadOrders();
-    } else {
-      const help = shopWhatsAppLink('Hello Maison Bennani, I forgot my password.');
-      document.getElementById('acctBody').innerHTML = `
-        <form id="loginPane" onsubmit="Account.login(); return false">
-          <label>Phone number</label><input id="loginPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="06XXXXXXXX">
-          <label>Password</label><input id="loginPassword" type="password" autocomplete="current-password" autocapitalize="none" autocorrect="off" spellcheck="false">
-          <div id="loginErr" style="color:var(--danger);font-size:.8rem;margin-top:8px"></div>
-          <button class="btn-primary" style="margin-top:16px" type="submit">Sign In</button>
-          <p class="note" style="text-align:center;margin-top:12px">Forgot your password? ${help ? `<a href="${esc(help)}" target="_blank" rel="noopener">Message us on WhatsApp</a> and we'll reset it.` : 'Contact us and we will reset it for you.'}</p>
-          <p style="color:var(--muted);font-size:.82rem;margin-top:16px;text-align:center">No account yet? <a href="#" style="color:var(--gold-soft)" onclick="Account.showRegister();return false">Create one</a></p>
-        </form>
-        <form id="registerPane" style="display:none" onsubmit="Account.register(); return false">
-          <label>Phone number (WhatsApp)</label><input id="regPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="06XXXXXXXX">
-          <label>Password (min 8 characters)</label><input id="regPassword" type="password" autocomplete="new-password" autocapitalize="none" autocorrect="off" spellcheck="false">
-          <div id="regErr" style="color:var(--danger);font-size:.8rem;margin-top:8px"></div>
-          <button class="btn-primary" style="margin-top:16px" type="submit">Create Account</button>
-          <p style="color:var(--muted);font-size:.82rem;margin-top:16px;text-align:center">Already have an account? <a href="#" style="color:var(--gold-soft)" onclick="Account.showLogin();return false">Sign in</a></p>
-        </form>`;
-    }
-  },
-  showRegister() { document.getElementById('loginPane').style.display = 'none'; document.getElementById('registerPane').style.display = 'block'; },
-  showLogin() { document.getElementById('registerPane').style.display = 'none'; document.getElementById('loginPane').style.display = 'block'; },
-  async afterSignIn(message) {
-    toast(message);
-    await Account.refresh();
-    if (state.cart.length > 0) { Account.close(); Checkout.open(); }
-  },
-  async login() {
-    try {
-      await postJson('/api/customers/login', {
-        phone: document.getElementById('loginPhone').value,
-        password: document.getElementById('loginPassword').value
-      });
-      await Account.afterSignIn('Welcome back!');
-    } catch (err) { document.getElementById('loginErr').textContent = err.message; }
-  },
-  async register() {
-    try {
-      await postJson('/api/customers/register', {
-        phone: document.getElementById('regPhone').value,
-        password: document.getElementById('regPassword').value
-      });
-      await Account.afterSignIn('Account created!');
-    } catch (err) { document.getElementById('regErr').textContent = err.message; }
-  },
-  async changePassword() {
-    const err = document.getElementById('chgErr');
-    err.style.color = 'var(--danger)';
-    try {
-      await postJson('/api/customers/change-password', {
-        currentPassword: document.getElementById('chgCur').value,
-        newPassword: document.getElementById('chgNew').value
-      });
-      document.getElementById('chgCur').value = '';
-      document.getElementById('chgNew').value = '';
-      err.style.color = 'var(--gold-soft)';
-      err.textContent = 'Password updated.';
-    } catch (e) { err.textContent = e.message; }
-  },
-  async logout() {
-    await api('/api/customers/logout', { method: 'POST' });
-    state.customer = null;
-    toast('Signed out');
-    Account.render();
-  },
-  async loadOrders() {
-    try {
-      const orders = await api('/api/customers/my-orders');
-      const list = document.getElementById('myOrdersList');
-      if (!list) return;
-      list.innerHTML = orders.length ? orders.map(o => `
-        <div style="border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:10px;font-size:.85rem">
-          <div style="display:flex;justify-content:space-between"><b>${esc(o.id)}</b><span style="color:var(--gold-soft)">${esc(o.status)}</span></div>
-          <div style="color:var(--muted);margin-top:6px">${o.items.map(i => i.qty + '× ' + esc(i.name)).join(', ')}</div>
-          <div style="margin-top:6px">${money(o.total)} · ${new Date(o.createdAt).toLocaleDateString()}</div>
-        </div>`).join('') : '<p style="color:var(--muted)">No orders yet.</p>';
-    } catch (e) { /* ignore */ }
-  }
-};
-document.getElementById('acctOverlay').onclick = Account.close;
 
 // ---------------- Landing question ----------------
 function initLandingPicker() {
@@ -484,7 +359,7 @@ function init() {
   initLandingPicker();
   renderCategoryNav();
   updateCartCount();
-  loadProducts(); // starts right away, alongside the two requests below
+  loadProducts(); // starts right away, alongside the settings request below
 
   api('/api/settings').then(s => {
     state.settings = s;
@@ -493,6 +368,5 @@ function init() {
   }).catch(() => {
     state.settings = { currency: 'DH', deliveryDefault: 35, freeDeliveryThreshold: 600, cityFees: {} };
   });
-  api('/api/customers/me').then(me => { state.customer = me.authenticated ? me.customer : null; }).catch(() => {});
 }
 init();

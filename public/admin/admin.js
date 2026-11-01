@@ -1,8 +1,6 @@
 let productsCache = [];
 let ordersCache = [];
-let customersCache = [];
 let settingsCache = null;
-let lastReset = null; // the most recent temporary password, shown until you leave the tab
 
 // Escapes text for safe use inside HTML (including inside "quoted" attributes). Order fields come
 // straight from customers at checkout, so they must never be treated as raw HTML.
@@ -94,10 +92,8 @@ async function logout() {
 document.querySelectorAll('.tabs button[data-tab]').forEach(btn => { btn.onclick = () => setTab(btn.dataset.tab); });
 function setTab(tab) {
   document.querySelectorAll('.tabs button[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
-  if (tab !== 'customers') lastReset = null;
   if (tab === 'products') loadProducts();
   if (tab === 'orders') loadOrders();
-  if (tab === 'customers') loadCustomers();
   if (tab === 'settings') loadSettings();
 }
 
@@ -371,50 +367,6 @@ async function updateStatus(id, status) {
     toast(err.message);
     loadOrders(); // put the dropdown back to the real status
   }
-}
-
-// ---------------- Customers ----------------
-async function loadCustomers() {
-  const content = document.getElementById('content');
-  content.innerHTML = '<p class="empty">Loading customers...</p>';
-  try {
-    customersCache = await api('/api/customers/admin/all');
-    renderCustomers();
-  } catch (e) { content.innerHTML = '<p class="empty">Could not load customers.</p>'; }
-}
-
-function renderCustomers() {
-  const reset = lastReset ? `
-    <div class="notice">
-      Temporary password for <b>${esc(lastReset.phone)}</b>: <code>${esc(lastReset.tempPassword)}</code>
-      ${waButton(lastReset.phone, `Hello, this is Maison Bennani. Your temporary password is: ${lastReset.tempPassword}\nPlease sign in and change it from "My Account".`, 'Send on WhatsApp')}
-      <div class="sub" style="margin-top:6px">Shown only now — it can't be looked up again. The customer should change it after signing in.</div>
-    </div>` : '';
-  document.getElementById('content').innerHTML = `
-    ${reset}
-    <div class="bar"><div><strong>${customersCache.length}</strong> customers</div></div>
-    <p class="sub" style="margin-bottom:12px">Customers sign in with their phone number. If someone forgets their password, press <b>Reset password</b>, then send them the temporary one on WhatsApp.</p>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Phone</th><th>Name</th><th>Orders</th><th>Joined</th><th>Actions</th></tr></thead>
-        <tbody>${customersCache.map(c => `<tr>
-          <td>${esc(c.phone)}<br>${waButton(c.phone, 'Hello, this is Maison Bennani.')}</td>
-          <td>${esc(c.name) || '<span class="sub">—</span>'}</td>
-          <td>${c.orderCount}</td>
-          <td class="sub">${new Date(c.createdAt).toLocaleDateString()}</td>
-          <td class="row-actions"><button onclick="resetCustomerPassword('${esc(c.id)}')">Reset password</button></td>
-        </tr>`).join('') || '<tr><td colspan="5" class="empty">No customers yet.</td></tr>'}</tbody>
-      </table>
-    </div>`;
-}
-
-async function resetCustomerPassword(id) {
-  if (!confirm("Reset this customer's password? Their old password will stop working.")) return;
-  try {
-    lastReset = await api('/api/customers/admin/' + id + '/reset-password', { method: 'POST' });
-    renderCustomers();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  } catch (err) { toast(err.message); }
 }
 
 // ---------------- Settings ----------------

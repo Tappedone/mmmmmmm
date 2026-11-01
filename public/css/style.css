@@ -164,3 +164,6 @@ html.seen .landing-picker{display:none;}
 
 /* Phones: fields under 16px make iPhones zoom the page when you tap them. */
 @media (max-width:700px){ input, select, textarea{ font-size:16px !important; } }
+
+/* Hidden trap field for bots — people never see it. */
+.hp{position:absolute; left:-10000px; top:auto; width:1px; height:1px; overflow:hidden;}

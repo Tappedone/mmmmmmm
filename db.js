@@ -36,7 +36,6 @@ function seed() {
   return {
     products,
     orders: [],
-    customers: [],
     settings: {
       deliveryDefault: 35,
       freeDeliveryThreshold: 600,
@@ -66,7 +65,6 @@ function read() {
     if (!data) throw err;
   }
   // Migrations: older files may lack newer fields.
-  if (!data.customers) data.customers = [];
   if (!data.settings) data.settings = {};
   if (data.settings.whatsappNumber === undefined) data.settings.whatsappNumber = '';
   return data;

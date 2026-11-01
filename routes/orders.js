@@ -1,17 +1,19 @@
 const express = require('express');
 const rateLimit = require('express-rate-limit');
 const db = require('../db');
-const { requireAdmin, requireCustomer } = require('../middleware/auth');
+const { requireAdmin } = require('../middleware/auth');
 const mailer = require('../utils/mailer');
 const fieldCrypto = require('../utils/crypto');
 const { isBundle } = require('../utils/bundles');
+const { normalizePhone } = require('../utils/phone');
 
 const router = express.Router();
 const VALID_STATUSES = ['New', 'Confirmed', 'Preparing', 'Shipped', 'Delivered', 'Cancelled'];
 
 function decryptOrder(o) {
+  const { phoneKey, ...rest } = o; // the internal phone fingerprint is never sent to the browser
   return {
-    ...o,
+    ...rest,
     name: fieldCrypto.decrypt(o.name),
     phone: fieldCrypto.decrypt(o.phone),
     address: fieldCrypto.decrypt(o.address),
@@ -19,12 +21,17 @@ function decryptOrder(o) {
   };
 }
 
-// Generous for a real shopper (a family could place a few orders), tight enough
-// to block a bot script from flooding fake orders that deplete your stock.
+// Orders are placed without an account, so abuse protection matters. Three layers:
+//  1. per connection — generous, because many phones on one mobile network can share one address;
+//  2. per phone number — a real customer doesn't order more than a few times a day;
+//  3. a hidden form field that only bots fill in.
+// You also confirm every order with the customer on WhatsApp before it ships, and cancelling an order
+// puts its stock back, so a fake order costs you a message, not money.
+const MAX_ORDERS_PER_PHONE_PER_DAY = 5;
 const orderLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
-  max: 15,
-  message: { error: 'Too many orders from this connection. Please try again later or contact us directly.' },
+  max: 40,
+  message: { error: 'Too many orders from this connection. Please try again later or message us on WhatsApp.' },
   standardHeaders: true,
   legacyHeaders: false
 });
@@ -34,24 +41,39 @@ function deliveryFeeFor(settings, city, subtotal) {
   return settings.cityFees[city] ?? settings.deliveryDefault;
 }
 
-// ---------- CUSTOMER ----------
+// ---------- CHECKOUT (no account needed) ----------
 // POST /api/orders  { name, phone, city, address, items:[{productId, qty}] }
-router.post('/', orderLimiter, requireCustomer, (req, res) => {
-  const data = db.read();
-  const { name, phone, city, address, items } = req.body || {};
+router.post('/', orderLimiter, (req, res) => {
+  const body = req.body || {};
 
-  // customerId always comes from the signed-in session — never from the request body
-  const customer = data.customers.find(c => c.id === req.session.customerId);
-  if (!customer) return res.status(401).json({ error: 'Please sign in again.' });
+  // Hidden trap field: people never see it, bots fill it. Pretend it worked so they don't adapt.
+  if (body.hp_check) return res.status(201).json({ ok: true, orderId: db.id('ord'), total: 0 });
+
+  const data = db.read();
+  const { city, address, items } = body;
+  const name = String(body.name || '').trim();
+  const phone = String(body.phone || '').trim();
 
   if (!name || !phone || !city || !address || !Array.isArray(items) || items.length === 0) {
-    return res.status(400).json({ error: 'Missing required order fields' });
+    return res.status(400).json({ error: 'Please fill in your name, phone number, city and address' });
   }
-  if (String(name).length > 100 || String(phone).length > 30 || String(city).length > 50 || String(address).length > 400) {
+  if (name.length > 100 || phone.length > 30 || String(city).length > 50 || String(address).length > 400) {
     return res.status(400).json({ error: 'One of the fields is too long. Please shorten it.' });
+  }
+  const normalizedPhone = normalizePhone(phone);
+  if (!normalizedPhone) {
+    return res.status(400).json({ error: 'Please enter a valid phone number — we contact you on it to confirm delivery.' });
   }
   if (items.length > 50) {
     return res.status(400).json({ error: 'Too many items in one order' });
+  }
+
+  // Same phone number, too many orders today (cancelled ones don't count)
+  const phoneKeys = new Set([fieldCrypto.blindIndex(normalizedPhone), fieldCrypto.plainIndex(normalizedPhone)]);
+  const since = Date.now() - 24 * 60 * 60 * 1000;
+  const recent = data.orders.filter(o => o.phoneKey && phoneKeys.has(o.phoneKey) && o.status !== 'Cancelled' && Date.parse(o.createdAt) > since).length;
+  if (recent >= MAX_ORDERS_PER_PHONE_PER_DAY) {
+    return res.status(429).json({ error: 'There have already been several orders from this phone number today. Please message us on WhatsApp.' });
   }
 
   const byId = new Map(data.products.map(p => [p.id, p]));
@@ -102,8 +124,7 @@ router.post('/', orderLimiter, requireCustomer, (req, res) => {
   const deliveryFee = deliveryFeeFor(data.settings, city, subtotal);
   const order = {
     id: db.id('ord'),
-    customerId: customer.id,
-    name, phone, city, address,
+    name, phone, city: String(city), address: String(address),
     items: lineItems,
     subtotal,
     deliveryFee,
@@ -117,7 +138,8 @@ router.post('/', orderLimiter, requireCustomer, (req, res) => {
     ...order,
     name: fieldCrypto.encrypt(order.name),
     phone: fieldCrypto.encrypt(order.phone),
-    address: fieldCrypto.encrypt(order.address)
+    address: fieldCrypto.encrypt(order.address),
+    phoneKey: fieldCrypto.blindIndex(normalizedPhone) // lets us count orders per phone without storing it readably
   };
   data.orders.unshift(storedOrder);
   db.write(data);
