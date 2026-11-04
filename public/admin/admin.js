@@ -153,66 +153,182 @@ function renderProductRows() {
 }
 
 // ----- Gift set builder -----
-let bundleSel = new Map(); // perfume id -> how many of it are in the set
+let giftSetItems = []; // array of { productId, qty, price, product: {...} } in order
 
-function renderBundlePicker() {
-  const q = (document.getElementById('bundleSearch').value || '').trim().toLowerCase();
+function getPerfumeById(id) {
+  return productsCache.find(x => x.id === id);
+}
+
+function renderBundleSearch() {
+  const input = document.getElementById('bundleSearch');
+  const results = document.getElementById('bundleSearchResults');
+  const q = (input.value || '').trim().toLowerCase();
   const own = document.getElementById('pfId').value;
-  const list = productsCache.filter(p => p.category !== 'Gift Sets' && p.id !== own && (!q || p.name.toLowerCase().includes(q)));
-  document.getElementById('bundleList').innerHTML = list.map(p => {
-    const on = bundleSel.has(p.id);
-    return `<div class="bundle-row">
-      <label class="bl"><input type="checkbox" data-pick="${esc(p.id)}" ${on ? 'checked' : ''}>
-        <span>${esc(p.name)}<small>${esc(p.category)} · ${p.price} DH · ${p.stock} in stock</small></span></label>
-      <input class="bq" type="number" min="1" max="10" value="${bundleSel.get(p.id) || 1}" data-qty="${esc(p.id)}" ${on ? '' : 'disabled'} aria-label="Quantity">
+  if (q.length === 0) {
+    results.style.display = 'none';
+    results.innerHTML = '';
+    return;
+  }
+  const already = new Set(giftSetItems.map(i => i.productId));
+  const list = productsCache.filter(p => p.category !== 'Gift Sets' && p.id !== own && !already.has(p.id) && p.name.toLowerCase().includes(q)).slice(0, 10);
+  if (list.length === 0) {
+    results.innerHTML = '<div class="bundle-search-item" style="color:var(--muted)">No matches</div>';
+    results.style.display = 'block';
+    return;
+  }
+  results.innerHTML = list.map(p => {
+    const thumb = p.imageThumb || p.image;
+    return `<div class="bundle-search-item" data-add="${esc(p.id)}">
+      ${thumb ? `<img src="${esc(thumb)}" alt="">` : '<div style="width:36px;height:36px;background:#222;border-radius:6px"></div>'}
+      <div><div>${esc(p.name)}</div><div class="sub">${esc(p.category)} · ${p.price} DH</div></div>
     </div>`;
-  }).join('') || '<p class="empty" style="padding:14px 0">No perfumes found. Add Men / Women perfumes first.</p>';
+  }).join('');
+  results.style.display = 'block';
+}
+
+function hideBundleSearch() {
+  setTimeout(() => {
+    document.getElementById('bundleSearchResults').style.display = 'none';
+  }, 150);
+}
+
+function addPerfumeToGiftSet(productId) {
+  const p = getPerfumeById(productId);
+  if (!p) return;
+  const existing = giftSetItems.find(i => i.productId === productId);
+  if (existing) return;
+  giftSetItems.push({
+    productId: p.id,
+    qty: 1,
+    price: p.price,
+    product: p
+  });
+  document.getElementById('bundleSearch').value = '';
+  document.getElementById('bundleSearchResults').style.display = 'none';
+  renderGiftSetSelected();
   updateBundleSummary();
+}
+
+function removePerfumeFromGiftSet(productId) {
+  giftSetItems = giftSetItems.filter(i => i.productId !== productId);
+  renderGiftSetSelected();
+  updateBundleSummary();
+}
+
+function movePerfumeInGiftSet(productId, direction) {
+  const idx = giftSetItems.findIndex(i => i.productId === productId);
+  if (idx === -1) return;
+  const newIdx = direction === 'up' ? idx - 1 : idx + 1;
+  if (newIdx < 0 || newIdx >= giftSetItems.length) return;
+  const [item] = giftSetItems.splice(idx, 1);
+  giftSetItems.splice(newIdx, 0, item);
+  renderGiftSetSelected();
+  updateBundleSummary();
+}
+
+function updateGiftSetItem(productId, field, value) {
+  const item = giftSetItems.find(i => i.productId === productId);
+  if (!item) return;
+  if (field === 'qty') {
+    let q = parseInt(value, 10);
+    if (isNaN(q) || q < 1) q = 1;
+    if (q > 10) q = 10;
+    item.qty = q;
+  } else if (field === 'price') {
+    let pr = parseFloat(value);
+    if (isNaN(pr) || pr < 0) pr = 0;
+    item.price = pr;
+  }
+  updateBundleSummary();
+}
+
+function renderGiftSetSelected() {
+  const container = document.getElementById('bundleSelected');
+  if (giftSetItems.length === 0) {
+    container.innerHTML = '<p class="empty" style="padding:10px 0">No perfumes selected yet. Search and add perfumes above.</p>';
+    return;
+  }
+  container.innerHTML = giftSetItems.map((item, idx) => {
+    const p = item.product || getPerfumeById(item.productId) || {};
+    const thumb = p.imageThumb || p.image;
+    return `<div class="bundle-selected-item">
+      <div class="bsi-header">
+        <div class="bsi-info">
+          ${thumb ? `<img src="${esc(thumb)}" alt="">` : '<div class="bsi-img-placeholder"></div>'}
+          <div>
+            <div class="bsi-name">${esc(p.name || item.productId)}</div>
+            <div class="sub">${esc(p.category || '')} · Original: ${p.price || 0} DH</div>
+          </div>
+        </div>
+        <div class="bsi-actions">
+          <button type="button" class="btn small secondary" onclick="movePerfumeInGiftSet('${esc(item.productId)}','up')" ${idx === 0 ? 'disabled' : ''}>↑</button>
+          <button type="button" class="btn small secondary" onclick="movePerfumeInGiftSet('${esc(item.productId)}','down')" ${idx === giftSetItems.length - 1 ? 'disabled' : ''}>↓</button>
+          <button type="button" class="btn small secondary" style="border-color:var(--danger);color:var(--danger)" onclick="removePerfumeFromGiftSet('${esc(item.productId)}')">Remove</button>
+        </div>
+      </div>
+      <div class="bsi-body">
+        <div class="bsi-field">
+          <label>Quantity</label>
+          <input type="number" min="1" max="10" value="${item.qty}" onchange="updateGiftSetItem('${esc(item.productId)}','qty',this.value)">
+        </div>
+        <div class="bsi-field">
+          <label>Individual price (DH) - independent of original</label>
+          <input type="number" step="0.01" min="0" value="${item.price}" onchange="updateGiftSetItem('${esc(item.productId)}','price',this.value)">
+        </div>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 function updateBundleSummary() {
   const stockInput = document.getElementById('pfStock');
   const hint = document.getElementById('pfStockHint');
-  let total = 0, sets = Infinity;
-  for (const [id, qty] of bundleSel) {
-    const p = productsCache.find(x => x.id === id);
+  let totalIndividual = 0;
+  let sets = Infinity;
+  let totalQty = 0;
+  for (const item of giftSetItems) {
+    const p = item.product || getPerfumeById(item.productId);
     if (!p) continue;
-    total += p.price * qty;
-    sets = Math.min(sets, Math.floor(p.stock / qty));
+    const qty = Math.max(1, parseInt(item.qty, 10) || 1);
+    const price = parseFloat(item.price);
+    if (!isNaN(price)) totalIndividual += price * qty;
+    totalQty += qty;
+    sets = Math.min(sets, Math.floor((p.stock || 0) / qty));
   }
-  if (bundleSel.size === 0) {
+  if (giftSetItems.length === 0) {
     document.getElementById('bundleSummary').innerHTML = '<span class="sub">No perfumes selected yet.</span>';
     stockInput.disabled = false;
     hint.textContent = '';
     return;
   }
   document.getElementById('bundleSummary').innerHTML =
-    `<b>${[...bundleSel.values()].reduce((a, b) => a + b, 0)}</b> perfume(s) selected · worth <b>${total} DH</b> separately
-     <button type="button" class="btn secondary small" onclick="document.getElementById('pfCompareAt').value=${total}">Use as "compare-at" price</button>`;
+    `<div><b>${totalQty}</b> perfume item(s) across <b>${giftSetItems.length}</b> type(s) · Combined individual prices: <b>${totalIndividual.toFixed(2)} DH</b></div>
+     <div style="margin-top:6px"><button type="button" class="btn secondary small" onclick="document.getElementById('pfPrice').value = ${totalIndividual.toFixed(2)}">Use combined sum as gift set selling price</button>
+     <button type="button" class="btn secondary small" onclick="document.getElementById('pfCompareAt').value = ${totalIndividual.toFixed(2)}">Use as "compare-at" price</button></div>`;
   stockInput.disabled = true;
   hint.textContent = `Stock is automatic: ${isFinite(sets) ? sets : 0} complete set(s) available, based on the perfumes' own stock.`;
 }
 
-document.getElementById('bundleList').addEventListener('change', (e) => {
-  const t = e.target;
-  if (t.dataset.pick) {
-    const qtyInput = t.closest('.bundle-row').querySelector('.bq');
-    if (t.checked) { bundleSel.set(t.dataset.pick, Math.max(1, parseInt(qtyInput.value, 10) || 1)); qtyInput.disabled = false; }
-    else { bundleSel.delete(t.dataset.pick); qtyInput.disabled = true; }
-  } else if (t.dataset.qty) {
-    const q = Math.min(10, Math.max(1, parseInt(t.value, 10) || 1));
-    t.value = q;
-    if (bundleSel.has(t.dataset.qty)) bundleSel.set(t.dataset.qty, q);
+document.getElementById('bundleSearch').addEventListener('input', renderBundleSearch);
+document.getElementById('bundleSearch').addEventListener('focus', renderBundleSearch);
+document.getElementById('bundleSearch').addEventListener('blur', hideBundleSearch);
+document.getElementById('bundleSearchResults').addEventListener('click', (e) => {
+  const item = e.target.closest('.bundle-search-item');
+  if (item && item.dataset.add) {
+    addPerfumeToGiftSet(item.dataset.add);
   }
-  updateBundleSummary();
 });
-document.getElementById('bundleSearch').addEventListener('input', renderBundlePicker);
 
 function syncCategoryUI() {
   const isGift = document.getElementById('pfCategory').value === 'Gift Sets';
   document.getElementById('bundleSection').style.display = isGift ? 'block' : 'none';
-  if (isGift) renderBundlePicker();
-  else { document.getElementById('pfStock').disabled = false; document.getElementById('pfStockHint').textContent = ''; }
+  if (isGift) {
+    renderGiftSetSelected();
+    updateBundleSummary();
+  } else {
+    document.getElementById('pfStock').disabled = false;
+    document.getElementById('pfStockHint').textContent = '';
+  }
 }
 document.getElementById('pfCategory').addEventListener('change', syncCategoryUI);
 
@@ -220,7 +336,8 @@ function openProductModal(id) {
   document.getElementById('productForm').reset();
   document.getElementById('pfPreview').style.display = 'none';
   document.getElementById('bundleSearch').value = '';
-  bundleSel = new Map();
+  document.getElementById('bundleSearchResults').style.display = 'none';
+  giftSetItems = [];
   if (id) {
     const p = productsCache.find(x => x.id === id);
     document.getElementById('productModalTitle').textContent = 'Edit Product';
@@ -232,7 +349,18 @@ function openProductModal(id) {
     document.getElementById('pfStock').value = p.stock;
     document.getElementById('pfDescription').value = p.description || '';
     document.getElementById('pfActive').checked = p.active;
-    (p.bundle || []).forEach(b => bundleSel.set(b.productId, b.qty));
+    if (Array.isArray(p.bundle)) {
+      giftSetItems = p.bundle.map(b => {
+        const prod = getPerfumeById(b.productId) || {};
+        const customPrice = b.price !== undefined && b.price !== null ? parseFloat(b.price) : (b.customPrice !== undefined && b.customPrice !== null ? parseFloat(b.customPrice) : (prod.price || 0));
+        return {
+          productId: b.productId,
+          qty: Math.max(1, parseInt(b.qty, 10) || 1),
+          price: isNaN(customPrice) ? (prod.price || 0) : customPrice,
+          product: prod
+        };
+      });
+    }
     const thumb = p.imageThumb || p.image;
     if (thumb) { document.getElementById('pfPreview').src = thumb; document.getElementById('pfPreview').style.display = 'block'; }
   } else {
@@ -265,7 +393,12 @@ document.getElementById('productForm').addEventListener('submit', async (e) => {
   if (!document.getElementById('pfStock').disabled) fd.append('stock', document.getElementById('pfStock').value);
   fd.append('description', document.getElementById('pfDescription').value);
   fd.append('active', document.getElementById('pfActive').checked);
-  fd.append('bundle', JSON.stringify(category === 'Gift Sets' ? [...bundleSel].map(([productId, qty]) => ({ productId, qty })) : []));
+  if (category === 'Gift Sets') {
+    const bundleData = giftSetItems.map(item => ({ productId: item.productId, qty: Math.max(1, parseInt(item.qty, 10) || 1), price: parseFloat(item.price) || 0 }));
+    fd.append('bundle', JSON.stringify(bundleData));
+  } else {
+    fd.append('bundle', JSON.stringify([]));
+  }
   const file = document.getElementById('pfImage').files[0];
   if (file) fd.append('image', file);
 

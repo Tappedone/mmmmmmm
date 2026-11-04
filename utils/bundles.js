@@ -13,16 +13,21 @@ function enrichProduct(p, byId) {
   if (!isBundle(p)) return { ...p, bundleItems: [] };
   let available = Infinity;
   const bundleItems = [];
-  for (const b of p.bundle) {
+  const bundle = Array.isArray(p.bundle) ? p.bundle : [];
+  for (let i = 0; i < bundle.length; i++) {
+    const b = bundle[i];
     const c = byId.get(b.productId);
     if (!c) { available = 0; continue; } // a perfume in the set no longer exists
-    available = Math.min(available, Math.floor((c.stock || 0) / b.qty));
+    const qty = Math.max(1, parseInt(b.qty, 10) || 1);
+    available = Math.min(available, Math.floor((c.stock || 0) / qty));
+    const customPrice = b.price !== undefined && b.price !== null ? parseFloat(b.price) : (b.customPrice !== undefined && b.customPrice !== null ? parseFloat(b.customPrice) : null);
     bundleItems.push({
       productId: c.id,
       name: c.name,
       category: c.category,
-      qty: b.qty,
-      price: c.price,
+      qty,
+      price: customPrice !== null && !isNaN(customPrice) ? customPrice : c.price,
+      originalPrice: c.price,
       image: c.imageThumb || c.image || null
     });
   }

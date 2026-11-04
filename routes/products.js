@@ -81,15 +81,35 @@ function parseBundle(raw, products, selfId) {
   if (list.length > 20) return { error: 'A gift set can include at most 20 different perfumes' };
 
   const byId = byIdMap(products);
-  const merged = new Map();
+  const result = [];
+  const seen = new Set();
   for (const item of list) {
     const c = byId.get(item && item.productId);
     if (!c || c.id === selfId) return { error: 'One of the selected perfumes no longer exists' };
     if (c.category === 'Gift Sets') return { error: 'Only perfumes from Men or Women can be added to a gift set' };
+    if (seen.has(c.id)) {
+      // If same perfume added twice, merge by summing qty but keep first occurrence's price if specified
+      const existing = result.find(r => r.productId === c.id);
+      if (existing) {
+        existing.qty = Math.min(10, (existing.qty || 1) + Math.min(10, Math.max(1, parseInt(item.qty, 10) || 1)));
+        continue;
+      }
+    }
+    seen.add(c.id);
     const qty = Math.min(10, Math.max(1, parseInt(item.qty, 10) || 1));
-    merged.set(c.id, (merged.get(c.id) || 0) + qty);
+    let price = undefined;
+    if (item.price !== undefined && item.price !== null && item.price !== '') {
+      price = parseFloat(item.price);
+      if (isNaN(price) || price < 0) return { error: 'Invalid price for a perfume in the gift set' };
+    } else if (item.customPrice !== undefined && item.customPrice !== null && item.customPrice !== '') {
+      price = parseFloat(item.customPrice);
+      if (isNaN(price) || price < 0) return { error: 'Invalid price for a perfume in the gift set' };
+    }
+    const entry = { productId: c.id, qty };
+    if (price !== undefined) entry.price = price;
+    result.push(entry);
   }
-  return { bundle: [...merged.entries()].map(([productId, qty]) => ({ productId, qty: Math.min(qty, 10) })) };
+  return { bundle: result };
 }
 
 function setsUsing(productId, products) {

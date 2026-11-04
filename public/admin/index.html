@@ -60,10 +60,14 @@
 
       <div id="bundleSection" style="display:none">
         <label>Perfumes in this gift set</label>
-        <div class="sub" style="margin-bottom:8px">Pick perfumes from your Men and Women collections. Tick the box, and set how many of each.</div>
-        <input id="bundleSearch" placeholder="Search perfumes..." autocomplete="off">
-        <div id="bundleList" class="bundle-list"></div>
-        <div id="bundleSummary" class="bundle-summary"></div>
+        <div class="sub" style="margin-bottom:8px">Select perfumes from your Men and Women collections. Set individual prices and reorder as needed.</div>
+        <div style="position:relative;margin-bottom:10px">
+          <input id="bundleSearch" placeholder="Search perfumes by name to add..." autocomplete="off">
+          <div id="bundleSearchResults" class="bundle-search-results" style="display:none"></div>
+        </div>
+        <div class="sub" style="margin-bottom:6px">Selected perfumes</div>
+        <div id="bundleSelected" class="bundle-selected"></div>
+        <div id="bundleSummary" class="bundle-summary" style="margin-top:10px"></div>
       </div>
 
       <label>Product image</label><input type="file" id="pfImage" accept="image/png,image/jpeg,image/webp">
