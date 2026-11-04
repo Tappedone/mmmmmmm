@@ -49,7 +49,9 @@
     <h2 id="productModalTitle">Add Product</h2>
     <form id="productForm">
       <input type="hidden" id="pfId">
-      <label>Product name</label><input required id="pfName">
+      <label>Product name</label>
+      <input required id="pfName">
+      <select id="pfNameSelect" style="display:none"></select>
       <label>Category</label>
       <select id="pfCategory"><option>Men</option><option>Women</option><option>Gift Sets</option></select>
       <label>Price (DH)</label><input required type="number" step="0.01" id="pfPrice">

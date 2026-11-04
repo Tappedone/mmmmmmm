@@ -329,11 +329,32 @@ function updateBundleSummary() {
 function syncCategoryUI() {
   const isGift = document.getElementById('pfCategory').value === 'Gift Sets';
   document.getElementById('bundleSection').style.display = isGift ? 'block' : 'none';
+  const nameInput = document.getElementById('pfName');
+  const nameSelect = document.getElementById('pfNameSelect');
   if (isGift) {
+    if (nameInput) nameInput.style.display = 'none';
+    if (nameSelect) {
+      nameSelect.style.display = 'block';
+      const own = document.getElementById('pfId').value;
+      const options = productsCache
+        .filter(p => p.id !== own)
+        .sort((a,b) => a.name.localeCompare(b.name));
+      nameSelect.innerHTML = '<option value="">Select a product...</option>' + options.map(p => '<option value="' + esc(p.name) + '">' + esc(p.name) + ' (' + esc(p.category) + ')</option>').join('');
+      // if current nameInput has value and matches, try to set select
+      if (nameInput && nameInput.value) {
+        for (let i = 0; i < nameSelect.options.length; i++) {
+          if (nameSelect.options[i].value === nameInput.value) {
+            nameSelect.value = nameInput.value;
+            break;
+          }
+        }
+      }
+    }
     renderGiftSetSelected();
     updateBundleSummary();
-    if (typeof populateBundleDropdown === 'function') populateBundleDropdown();
   } else {
+    if (nameInput) nameInput.style.display = 'block';
+    if (nameSelect) nameSelect.style.display = 'none';
     const stockInput = document.getElementById('pfStock');
     const hint = document.getElementById('pfStockHint');
     if (stockInput) { stockInput.disabled = false; }
@@ -356,7 +377,7 @@ function openProductModal(id) {
     const p = productsCache.find(x => x.id === id);
     document.getElementById('productModalTitle').textContent = 'Edit Product';
     document.getElementById('pfId').value = p.id;
-    document.getElementById('pfName').value = p.name;
+    document.getElementById('pfName').value = p.name || '';
     document.getElementById('pfCategory').value = p.category;
     document.getElementById('pfPrice').value = p.price;
     document.getElementById('pfCompareAt').value = p.compareAtPrice || '';
@@ -414,7 +435,14 @@ document.getElementById('productForm').addEventListener('submit', async (e) => {
     return;
   }
   const fd = new FormData();
-  fd.append('name', document.getElementById('pfName').value);
+  let nameValue = document.getElementById('pfName').value;
+  if (category === 'Gift Sets') {
+    const nameSelect = document.getElementById('pfNameSelect');
+    if (nameSelect && nameSelect.style.display !== 'none') {
+      nameValue = nameSelect.value;
+    }
+  }
+  fd.append('name', nameValue);
   fd.append('category', category);
   fd.append('price', document.getElementById('pfPrice').value);
   fd.append('compareAtPrice', document.getElementById('pfCompareAt').value);
