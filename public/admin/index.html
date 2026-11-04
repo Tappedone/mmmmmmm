@@ -60,17 +60,10 @@
 
       <div id="bundleSection" style="display:none">
         <label>Perfumes in this gift set</label>
-        <div class="sub" style="margin-bottom:8px">Select perfumes from your Men and Women collections or add a custom perfume name. Set individual prices and reorder as needed.</div>
-        <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
-          <select id="bundleDropdown" style="flex:1;min-width:200px">
-            <option value="">Select a perfume from existing categories...</option>
-          </select>
-          <button type="button" class="btn secondary small" onclick="addFromDropdown()">Add from list</button>
-        </div>
+        <div class="sub" style="margin-bottom:8px">Paste perfume names separated by commas (e.g. Rose Éclat, Oud Royal). Existing perfumes will be auto-imported with no price; unmatched names will be added as custom entries.</div>
         <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center">
-          <input id="bundleCustomName" placeholder="Or add a custom perfume name not listed" style="flex:1;min-width:200px">
-          <input id="bundleCustomPrice" type="number" step="0.01" min="0" placeholder="Price (DH)" style="width:120px">
-          <button type="button" class="btn secondary small" onclick="addCustomPerfume()">Add custom</button>
+          <input id="bundleNameInput" placeholder="Enter names separated by commas" style="flex:1;min-width:200px">
+          <button type="button" class="btn secondary small" onclick="addPerfumesFromNames()">Add</button>
         </div>
         <div class="sub" style="margin-bottom:6px">Selected perfumes (max 3)</div>
         <div id="bundleSelected" class="bundle-selected"></div>
