@@ -78,24 +78,43 @@ function parseBundle(raw, products, selfId) {
   let list;
   try { list = typeof raw === 'string' ? JSON.parse(raw || '[]') : raw; } catch (e) { return { error: 'Invalid gift set contents' }; }
   if (!Array.isArray(list)) return { error: 'Invalid gift set contents' };
-  if (list.length > 20) return { error: 'A gift set can include at most 20 different perfumes' };
+  if (list.length > 3) return { error: 'A gift set can include at most 3 perfumes' };
 
   const byId = byIdMap(products);
   const result = [];
   const seen = new Set();
   for (const item of list) {
+    if (!item) continue;
+    // Allow custom perfumes
+    if (item.custom || item.customName || (!item.productId && item.name) || (typeof item.productId === 'string' && item.productId.indexOf('custom_') === 0)) {
+      const name = (item.name || item.customName || '').trim();
+      if (!name) return { error: 'Custom perfume must have a name' };
+      const qty = Math.min(10, Math.max(1, parseInt(item.qty, 10) || 1));
+      let price = undefined;
+      if (item.price !== undefined && item.price !== null && item.price !== '') {
+        price = parseFloat(item.price);
+        if (isNaN(price) || price < 0) return { error: 'Invalid price for a perfume in the gift set' };
+      } else if (item.customPrice !== undefined && item.customPrice !== null && item.customPrice !== '') {
+        price = parseFloat(item.customPrice);
+        if (isNaN(price) || price < 0) return { error: 'Invalid price for a perfume in the gift set' };
+      }
+      const entry = { custom: true, name: name.slice(0, 120), productId: item.productId || ('custom_' + Date.now().toString(36)), qty };
+      if (price !== undefined) entry.price = price;
+      result.push(entry);
+      continue;
+    }
     const c = byId.get(item && item.productId);
     if (!c || c.id === selfId) return { error: 'One of the selected perfumes no longer exists' };
     if (c.category === 'Gift Sets') return { error: 'Only perfumes from Men or Women can be added to a gift set' };
-    if (seen.has(c.id)) {
-      // If same perfume added twice, merge by summing qty but keep first occurrence's price if specified
-      const existing = result.find(r => r.productId === c.id);
+    const key = c.id;
+    if (seen.has(key)) {
+      const existing = result.find(r => r.productId === key && !r.custom);
       if (existing) {
         existing.qty = Math.min(10, (existing.qty || 1) + Math.min(10, Math.max(1, parseInt(item.qty, 10) || 1)));
         continue;
       }
     }
-    seen.add(c.id);
+    seen.add(key);
     const qty = Math.min(10, Math.max(1, parseInt(item.qty, 10) || 1));
     let price = undefined;
     if (item.price !== undefined && item.price !== null && item.price !== '') {

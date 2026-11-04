@@ -93,7 +93,12 @@ router.post('/', orderLimiter, (req, res) => {
     }
     const qty = Math.min(50, Math.max(1, parseInt(line.qty, 10) || 1));
     if (isBundle(product)) {
-      for (const b of product.bundle) addNeed(b.productId, b.qty * qty);
+      for (const b of product.bundle || []) {
+        if (b.custom || b.customName || (!b.productId && b.name) || (typeof b.productId === 'string' && b.productId.indexOf('custom_') === 0)) {
+          continue;
+        }
+        if (b.productId) addNeed(b.productId, (b.qty || 1) * qty);
+      }
     } else {
       addNeed(product.id, qty);
     }
@@ -102,10 +107,18 @@ router.post('/', orderLimiter, (req, res) => {
   }
 
   for (const { product, qty } of lines) {
-    const parts = isBundle(product) ? product.bundle.map(b => b.productId) : [product.id];
-    for (const id of parts) {
-      const part = byId.get(id);
-      if (!part || part.stock < need.get(id)) {
+    if (isBundle(product)) {
+      const parts = (product.bundle || []).filter(b => !(b.custom || b.customName || (!b.productId && b.name) || (typeof b.productId === 'string' && b.productId.indexOf('custom_') === 0)));
+      for (const b of parts) {
+        const id = b.productId;
+        const part = byId.get(id);
+        if (!part || part.stock < need.get(id)) {
+          return res.status(400).json({ error: `Sorry, "${product.name}" is no longer available in that quantity` });
+        }
+      }
+    } else {
+      const part = product;
+      if (part.stock < need.get(part.id)) {
         return res.status(400).json({ error: `Sorry, "${product.name}" is no longer available in that quantity` });
       }
     }
@@ -114,12 +127,21 @@ router.post('/', orderLimiter, (req, res) => {
   const lineItems = lines.map(({ product, qty }) => {
     const item = { productId: product.id, name: product.name, price: product.price, qty };
     if (isBundle(product)) {
-      item.bundle = product.bundle.map(b => ({ productId: b.productId, name: byId.get(b.productId).name, qty: b.qty }));
+      item.bundle = (product.bundle || []).map(b => {
+        if (b.custom || b.customName || (!b.productId && b.name) || (typeof b.productId === 'string' && b.productId.indexOf('custom_') === 0)) {
+          return { productId: b.productId || null, name: b.name || b.customName || 'Custom Perfume', qty: b.qty || 1, custom: true };
+        }
+        const found = byId.get(b.productId);
+        return { productId: b.productId, name: found ? found.name : b.name, qty: b.qty || 1 };
+      });
     }
     return item;
   });
 
-  for (const [id, units] of need) byId.get(id).stock -= units;
+  for (const [id, units] of need) {
+    const p = byId.get(id);
+    if (p) p.stock -= units;
+  }
 
   const deliveryFee = deliveryFeeFor(data.settings, city, subtotal);
   const order = {
@@ -159,10 +181,13 @@ router.get('/admin/all', requireAdmin, (req, res) => {
 // How many of each individual perfume an order holds (looking inside gift sets).
 function orderUnits(order) {
   const units = new Map();
-  const add = (id, n) => { if (id) units.set(id, (units.get(id) || 0) + n); };
+  const add = (id, n) => { if (id && !(typeof id === 'string' && id.indexOf('custom_') === 0)) units.set(id, (units.get(id) || 0) + n); };
   for (const item of order.items || []) {
     if (Array.isArray(item.bundle)) {
-      for (const b of item.bundle) add(b.productId, b.qty * item.qty);
+      for (const b of item.bundle) {
+        if (b.custom) continue;
+        add(b.productId, (b.qty || 1) * item.qty);
+      }
     } else {
       add(item.productId, item.qty);
     }
