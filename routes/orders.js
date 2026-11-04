@@ -92,8 +92,17 @@ router.post('/', orderLimiter, (req, res) => {
       return res.status(400).json({ error: 'One of the items in your bag is no longer available' });
     }
     const qty = Math.min(50, Math.max(1, parseInt(line.qty, 10) || 1));
-    if (isBundle(product)) {
-      for (const b of product.bundle || []) {
+    if (isBundle(product) || product.category === 'Gift Sets') {
+      let bundleToUse = Array.isArray(product.bundle) ? product.bundle : [];
+      if (product.category === 'Gift Sets' && bundleToUse.length === 0) {
+        // auto-include all perfumes
+        for (const [pid, prod] of byId) {
+          if (prod && prod.category && prod.category !== 'Gift Sets' && prod.active !== false) {
+            bundleToUse.push({ productId: pid, qty: 1 });
+          }
+        }
+      }
+      for (const b of bundleToUse) {
         if (b.custom || b.customName || (!b.productId && b.name) || (typeof b.productId === 'string' && b.productId.indexOf('custom_') === 0)) {
           continue;
         }
@@ -103,16 +112,25 @@ router.post('/', orderLimiter, (req, res) => {
       addNeed(product.id, qty);
     }
     subtotal += product.price * qty;
-    lines.push({ product, qty });
+    lines.push({ product, qty, bundleOverride: (product.category === 'Gift Sets' && (!Array.isArray(product.bundle) || product.bundle.length === 0)) ? (function(){ const b=[]; for (const [pid,prod] of byId){ if(prod&&prod.category&&prod.category!=='Gift Sets'&&prod.active!==false){b.push({productId:pid,qty:1});}} return b; })() : null });
   }
 
   for (const { product, qty } of lines) {
-    if (isBundle(product)) {
-      const parts = (product.bundle || []).filter(b => !(b.custom || b.customName || (!b.productId && b.name) || (typeof b.productId === 'string' && b.productId.indexOf('custom_') === 0)));
+    if (isBundle(product) || product.category === 'Gift Sets') {
+      let bundleToUse = Array.isArray(product.bundle) ? product.bundle : [];
+      if (product.category === 'Gift Sets' && bundleToUse.length === 0) {
+        bundleToUse = [];
+        for (const [pid, prod] of byId) {
+          if (prod && prod.category && prod.category !== 'Gift Sets' && prod.active !== false) {
+            bundleToUse.push({ productId: pid, qty: 1 });
+          }
+        }
+      }
+      const parts = bundleToUse.filter(b => !(b.custom || b.customName || (!b.productId && b.name) || (typeof b.productId === 'string' && b.productId.indexOf('custom_') === 0)));
       for (const b of parts) {
         const id = b.productId;
         const part = byId.get(id);
-        if (!part || part.stock < need.get(id)) {
+        if (!part || part.stock < (need.get(id) || 0)) {
           return res.status(400).json({ error: `Sorry, "${product.name}" is no longer available in that quantity` });
         }
       }
@@ -126,8 +144,17 @@ router.post('/', orderLimiter, (req, res) => {
 
   const lineItems = lines.map(({ product, qty }) => {
     const item = { productId: product.id, name: product.name, price: product.price, qty };
-    if (isBundle(product)) {
-      item.bundle = (product.bundle || []).map(b => {
+    if (isBundle(product) || product.category === 'Gift Sets') {
+      let bundleToUse = Array.isArray(product.bundle) ? product.bundle : [];
+      if (product.category === 'Gift Sets' && bundleToUse.length === 0) {
+        bundleToUse = [];
+        for (const [pid, prod] of byId) {
+          if (prod && prod.category && prod.category !== 'Gift Sets' && prod.active !== false) {
+            bundleToUse.push({ productId: pid, qty: 1 });
+          }
+        }
+      }
+      item.bundle = bundleToUse.map(b => {
         if (b.custom || b.customName || (!b.productId && b.name) || (typeof b.productId === 'string' && b.productId.indexOf('custom_') === 0)) {
           return { productId: b.productId || null, name: b.name || b.customName || 'Custom Perfume', qty: b.qty || 1, custom: true };
         }
