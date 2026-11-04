@@ -62,15 +62,29 @@ const findProduct = id => state.all.find(p => p.id === id);
 // ---------------- Products ----------------
 function renderCategoryNav() {
   const cats = ['All', 'Men', 'Women', 'Gift Sets'];
+  function disp(c){
+    if (c === 'All') return mbT('allFragrances');
+    if (c === 'Men') return mbLang === 'fr' ? "L'Homme" : mbT('men');
+    if (c === 'Women') return mbLang === 'fr' ? 'La Femme' : mbT('women');
+    if (c === 'Gift Sets') return mbLang === 'fr' ? 'Le coffret' : mbT('giftSets');
+    return c;
+  }
   document.getElementById('catNav').innerHTML = cats.map(c =>
-    `<button class="${c === state.category ? 'active' : ''}" data-cat="${c}">${c}</button>`
+    `<button class="${c === state.category ? 'active' : ''}" data-cat="${c}">${disp(c)}</button>`
   ).join('');
   document.querySelectorAll('#catNav button').forEach(b => b.onclick = () => setCategory(b.dataset.cat));
 }
 
 function setCategory(cat) {
   state.category = cat;
-  document.getElementById('sectionTitle').textContent = cat === 'All' ? 'All Fragrances' : cat;
+  function disp(c){
+    if (c === 'All') return mbT('allFragrances');
+    if (c === 'Men') return mbLang === 'fr' ? "L'Homme" : mbT('men');
+    if (c === 'Women') return mbLang === 'fr' ? 'La Femme' : mbT('women');
+    if (c === 'Gift Sets') return mbLang === 'fr' ? 'Le coffret' : mbT('giftSets');
+    return c;
+  }
+  document.getElementById('sectionTitle').textContent = disp(cat);
   renderCategoryNav();
   renderGrid();
 }
@@ -88,6 +102,12 @@ function setBadge(p) {
 function productCardHtml(p, index) {
   const out = p.stock <= 0;
   const img = imgHtml(p.imageThumb || p.image, p.name, { eager: index < 4 });
+  function cdisp(c){
+    if (c === 'Men') return mbLang === 'fr' ? "L'Homme" : c;
+    if (c === 'Women') return mbLang === 'fr' ? 'La Femme' : c;
+    if (c === 'Gift Sets') return mbLang === 'fr' ? 'Le coffret' : c;
+    return c;
+  }
   return `<div class="card" data-id="${esc(p.id)}">
     <div class="thumb">
       ${p.compareAtPrice ? '<span class="tag-sale">SALE</span>' : ''}
@@ -96,13 +116,13 @@ function productCardHtml(p, index) {
       ${setBadge(p)}
     </div>
     <div class="card-body">
-      <div class="cat">${esc(p.category)}</div>
+      <div class="cat">${esc(cdisp(p.category))}</div>
       <h3>${esc(p.name)}</h3>
       <div class="price-row">
         ${p.compareAtPrice ? `<span class="old">${money(p.compareAtPrice)}</span>` : ''}
         <span class="price">${money(p.price)}</span>
       </div>
-      <button class="addbtn" ${out ? 'disabled' : ''}>${out ? 'Unavailable' : 'View Product'}</button>
+      <button class="addbtn" ${out ? 'disabled' : ''}>${out ? mbT('unavailable') : mbT('viewProduct')}</button>
     </div>
   </div>`;
 }
@@ -117,7 +137,7 @@ function renderGrid() {
   if (sort === 'high') list = [...list].sort((a, b) => b.price - a.price);
   grid.innerHTML = list.length
     ? list.map(productCardHtml).join('')
-    : '<div class="empty-state">No fragrances match your search.</div>';
+    : '<div class="empty-state">' + mbT('noFragrancesMatch') + '</div>';
   grid.querySelectorAll('.card').forEach(card => card.onclick = () => PDP.open(card.dataset.id));
 }
 
@@ -150,14 +170,20 @@ function insideHtml(p) {
   if (!items.length) return '';
   const separately = items.reduce((s, b) => s + b.price * b.qty, 0);
   const saving = separately - p.price;
+  function cdisp(c){
+    if (c === 'Men') return mbLang === 'fr' ? "L'Homme" : c;
+    if (c === 'Women') return mbLang === 'fr' ? 'La Femme' : c;
+    if (c === 'Gift Sets') return mbLang === 'fr' ? 'Le coffret' : c;
+    return c;
+  }
   return `<div class="inside">
-    <h4>What's inside</h4>
+    <h4>${mbT('whatsInside')}</h4>
     ${items.map(b => `<div class="inside-row">
       <div class="mini">${b.image ? `<img src="${esc(b.image)}" alt="" width="46" height="46" loading="lazy" decoding="async">` : PLACEHOLDER_SVG}</div>
-      <div class="nm">${esc(b.name)}<small>${esc(b.category)}</small></div>
+      <div class="nm">${esc(b.name)}<small>${esc(cdisp(b.category))}</small></div>
       <div class="q">× ${b.qty}</div>
     </div>`).join('')}
-    ${saving > 0 ? `<div class="saving">Worth ${money(separately)} if bought separately — you save ${money(saving)}</div>` : ''}
+    ${saving > 0 ? `<div class="saving">${mbT('worth')} ${money(separately)} ${mbT('ifBoughtSeparately')} — ${mbT('youSave')} ${money(saving)}</div>` : ''}
   </div>`;
 }
 
@@ -165,10 +191,16 @@ const PDP = {
   open(id) {
     const p = findProduct(id);
     if (!p) return;
+    function cdisp(c){
+      if (c === 'Men') return mbLang === 'fr' ? "L'Homme" : c;
+      if (c === 'Women') return mbLang === 'fr' ? 'La Femme' : c;
+      if (c === 'Gift Sets') return mbLang === 'fr' ? 'Le coffret' : c;
+      return c;
+    }
     document.getElementById('pdpBody').innerHTML = `
       <div class="pdp-img">${imgHtml(p.image || p.imageThumb, p.name, { eager: true, w: 1200, h: 1200 })}</div>
       <div style="margin-top:18px">
-        <div class="cat">${esc(p.category)}</div>
+        <div class="cat">${esc(cdisp(p.category))}</div>
         <h2 class="serif" style="font-size:1.6rem;margin:6px 0">${esc(p.name)}</h2>
         <div class="price-row" style="font-size:1.1rem">
           ${p.compareAtPrice ? `<span class="old">${money(p.compareAtPrice)}</span>` : ''}
@@ -176,8 +208,8 @@ const PDP = {
         </div>
         <p style="color:var(--muted);margin-top:14px;line-height:1.6;font-size:.9rem">${esc(p.description || '')}</p>
         ${insideHtml(p)}
-        <p style="color:var(--muted);margin-top:14px;font-size:.78rem">${p.stock > 0 ? (p.stock <= 5 ? 'Only ' + p.stock + ' left' : 'In stock') : 'Currently out of stock'}</p>
-        <button class="btn-primary" style="margin-top:16px" ${p.stock <= 0 ? 'disabled' : ''} onclick="Cart.add('${esc(p.id)}')">Add to Bag</button>
+        <p style="color:var(--muted);margin-top:14px;font-size:.78rem">${p.stock > 0 ? (p.stock <= 5 ? mbT('onlyLeft') + ' ' + p.stock + ' ' + mbT('left') : mbT('inStock')) : mbT('currentlyOut')}</p>
+        <button class="btn-primary" style="margin-top:16px" ${p.stock <= 0 ? 'disabled' : ''} onclick="Cart.add('${esc(p.id)}')">${mbT('addToBag')}</button>
       </div>`;
     document.getElementById('pdpOverlay').classList.add('show');
     document.getElementById('pdpSheet').classList.add('show');
@@ -370,3 +402,72 @@ function init() {
   });
 }
 init();
+
+// --- i18n ---
+const i18n = {
+  en: {
+    allFragrances: 'All Fragrances',
+    searchPlaceholder: 'Search fragrances...',
+    sortFeatured: 'Sort: Featured',
+    sortLow: 'Price: Low to High',
+    sortHigh: 'Price: High to Low',
+    whatShopping: 'What are you shopping for?',
+    browseEverything: 'Browse everything',
+    men: 'Men', women: 'Women', giftSets: 'Gift Sets',
+    viewProduct: 'View Product', unavailable: 'Unavailable',
+    addToBag: 'Add to Bag', yourBag: 'Your Bag', checkout: 'Checkout',
+    fullName: 'Full name', phone: 'Phone number (WhatsApp)', phoneNote: 'We contact you on this number to confirm your delivery.',
+    city: 'City', fullAddress: 'Full address', addressPlaceholder: 'Street, building, floor, landmark...',
+    paymentMethod: 'Payment method', cod: 'Cash on Delivery (pay when you receive your order)', confirmOrder: 'Confirm Order',
+    product: 'Product', whatsInside: "What's inside", worth: 'Worth', ifBoughtSeparately: 'if bought separately', youSave: 'you save',
+    inStock: 'In stock', onlyLeft: 'Only', left: 'left', currentlyOut: 'Currently out of stock',
+    visitBoutique: 'Visit Our Boutique', casablanca: 'Casablanca, Morocco', openApple: 'Open in Apple Maps', openGoogle: 'Open in Google Maps', chatWhatsapp: 'Chat on WhatsApp',
+    noFragrancesMatch: 'No fragrances match your search.',
+    footer1: 'All rights reserved.', footer2: 'Cash on Delivery available across Morocco.'
+  },
+  fr: {
+    allFragrances: 'Toutes les fragrances',
+    searchPlaceholder: 'Rechercher des parfums...',
+    sortFeatured: 'Trier : En vedette',
+    sortLow: 'Prix : Croissant',
+    sortHigh: 'Prix : D�croissant',
+    whatShopping: 'Que recherchez-vous ?',
+    browseEverything: 'Parcourir tout',
+    men: "L'Homme", women: 'La Femme', giftSets: 'Le coffret',
+    viewProduct: 'Voir le produit', unavailable: 'Indisponible',
+    addToBag: 'Ajouter au panier', yourBag: 'Votre panier', checkout: 'Commander',
+    fullName: 'Nom complet', phone: 'Num�ro de t�l�phone (WhatsApp)', phoneNote: 'Nous vous contacterons sur ce num�ro pour confirmer votre livraison.',
+    city: 'Ville', fullAddress: 'Adresse compl�te', addressPlaceholder: 'Rue, b�timent, �tage, rep�re...',
+    paymentMethod: 'Mode de paiement', cod: 'Paiement � la livraison (payez � la r�ception)', confirmOrder: 'Confirmer la commande',
+    product: 'Produit', whatsInside: 'Contenu', worth: 'Valeur', ifBoughtSeparately: 'si achet� s�par�ment', youSave: 'vous �conomisez',
+    inStock: 'En stock', onlyLeft: 'Plus que', left: 'restant(s)', currentlyOut: 'Rupture de stock',
+    visitBoutique: 'Visitez notre boutique', casablanca: 'Casablanca, Maroc', openApple: 'Ouvrir dans Plans Apple', openGoogle: 'Ouvrir dans Google Maps', chatWhatsapp: 'Discuter sur WhatsApp',
+    noFragrancesMatch: 'Aucun parfum ne correspond � votre recherche.',
+    footer1: 'Tous droits r�serv�s.', footer2: 'Paiement � la livraison disponible dans tout le Maroc.'
+  }
+};
+let mbLang = localStorage.getItem('mb_lang') || 'en';
+if (localStorage.getItem('mb_fr_preset') === '1' || (new URLSearchParams(location.search).get('preset')||'').toLowerCase()==='fr' || (new URLSearchParams(location.search).get('lang')||'').toLowerCase()==='fr') { mbLang='fr'; localStorage.setItem('mb_lang','fr'); localStorage.setItem('mb_fr_preset','1'); }
+function mbT(k){ return (i18n[mbLang]&&i18n[mbLang][k]) || (i18n.en[k]) || k; }
+function mbApplyI18n(){
+  const ls = document.getElementById('langSwitcher'); if(ls) ls.value = mbLang;
+  const si = document.getElementById('searchInput'); if(si) si.placeholder = mbT('searchPlaceholder');
+  const ss = document.getElementById('sortSelect'); if(ss&&ss.options[0]) ss.options[0].textContent = mbT('sortFeatured'); if(ss&&ss.options[1]) ss.options[1].textContent = mbT('sortLow'); if(ss&&ss.options[2]) ss.options[2].textContent = mbT('sortHigh');
+  const lt = document.querySelector('.landing-title'); if(lt) lt.textContent = mbT('whatShopping');
+  const lskip = document.getElementById('landingSkip'); if(lskip) lskip.textContent = mbT('browseEverything');
+  document.querySelectorAll('.landing-btn-label').forEach((el,idx)=>{ const cats=[mbT('men'),mbT('women'),mbT('giftSets')]; if(cats[idx]) el.textContent=cats[idx]; });
+  const bt=document.querySelector('.boutique-title'); if(bt) bt.textContent=mbT('visitBoutique');
+  const bs=document.querySelector('.boutique-sub'); if(bs) bs.textContent=mbT('casablanca');
+  const bbtns=document.querySelectorAll('.boutique-btn'); if(bbtns[0]) bbtns[0].textContent=mbT('openApple'); if(bbtns[1]) bbtns[1].textContent=mbT('openGoogle'); if(bbtns[2]) bbtns[2].textContent=mbT('chatWhatsapp');
+  document.querySelectorAll('footer').forEach(f=>{ f.innerHTML = new Date().getFullYear()+' Maison Bennani. '+mbT('footer1')+'<br>'+mbT('footer2'); });
+  const lbls=document.querySelectorAll('#checkoutForm label'); if(lbls[0]) lbls[0].textContent=mbT('fullName'); if(lbls[1]) lbls[1].textContent=mbT('phone'); const note=document.querySelector('#checkoutForm .note'); if(note) note.textContent=mbT('phoneNote'); if(lbls[3]) lbls[3].textContent=mbT('city'); if(lbls[4]) lbls[4].textContent=mbT('fullAddress'); const cA=document.getElementById('cAddress'); if(cA) cA.placeholder=mbT('addressPlaceholder'); if(lbls[5]) lbls[5].textContent=mbT('paymentMethod'); const codv=document.querySelector('#checkoutForm input[disabled]'); if(codv) codv.value=mbT('cod'); const cbtn=document.querySelector('#checkoutForm button[type=submit]'); if(cbtn) cbtn.textContent=mbT('confirmOrder');
+  const phd=document.querySelector('#pdpSheet .sheet-head h2'); if(phd) phd.textContent=mbT('product');
+  const chd=document.querySelector('#cartSheet .sheet-head h2'); if(chd) chd.textContent=mbT('yourBag');
+  const coh=document.querySelector('#coSheet .sheet-head h2'); if(coh) coh.textContent=mbT('checkout');
+  if(typeof renderCategoryNav === 'function') renderCategoryNav();
+  if(typeof renderGrid === 'function') renderGrid();
+}
+document.addEventListener('DOMContentLoaded', function(){
+  const ls=document.getElementById('langSwitcher'); if(ls){ ls.value=mbLang; ls.onchange=function(){ mbLang=this.value; localStorage.setItem('mb_lang',mbLang); if(mbLang==='fr') localStorage.setItem('mb_fr_preset','1'); mbApplyI18n(); if(typeof setCategory==='function') setCategory(state.category); }; }
+  mbApplyI18n();
+});
