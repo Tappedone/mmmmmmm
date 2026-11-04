@@ -464,3 +464,39 @@ document.getElementById('productForm').addEventListener('submit', async (e) => {
 
 checkAuth();
 
+  const file = document.getElementById('pfImage').files[0];
+  if (file) fd.append('image', file);
+
+  const btn = e.target.querySelector('button[type=submit]');
+  btn.disabled = true; btn.textContent = file ? 'Optimizing photo...' : 'Saving...';
+  try {
+    if (id) { await api('/api/products/admin/' + id, { method: 'PUT', body: fd }); toast('Product updated'); }
+    else { await api('/api/products/admin', { method: 'POST', body: fd }); toast('Product added'); }
+    closeProductModal();
+    loadProducts();
+  } catch (err) { toast(err.message); }
+  finally { btn.disabled = false; btn.textContent = 'Save Product'; }
+});
+
+async function deleteProduct(id) {
+  if (!confirm('Delete this product permanently?')) return;
+  try {
+    await api('/api/products/admin/' + id, { method: 'DELETE' });
+    toast('Product deleted');
+    loadProducts();
+  } catch (err) { toast(err.message); }
+}
+  if (category === 'Gift Sets') {
+    const bundleData = giftSetItems.map(item => {
+      if (item.custom) {
+        return { custom: true, name: item.name || (item.product && item.product.name) || 'Custom', productId: item.productId, qty: Math.max(1, parseInt(item.qty, 10) || 1), price: parseFloat(item.price) || 0 };
+      }
+      return { productId: item.productId, qty: Math.max(1, parseInt(item.qty, 10) || 1), price: parseFloat(item.price) || 0 };
+    });
+    fd.append('bundle', JSON.stringify(bundleData));
+  } else {
+    fd.append('bundle', JSON.stringify([]));
+  }
+
+checkAuth();
+
