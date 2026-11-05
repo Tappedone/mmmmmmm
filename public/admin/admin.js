@@ -1,4 +1,4 @@
-﻿let productsCache = [];
+let productsCache = [];
 let ordersCache = [];
 let settingsCache = null;
 
@@ -25,7 +25,7 @@ async function api(path, opts) {
 }
 const sendJson = (method, path, body) => api(path, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
-// Moroccan numbers typed locally (06â€¦) become international (212â€¦) so WhatsApp links work.
+// Moroccan numbers typed locally (06…) become international (212…) so WhatsApp links work.
 function waNumber(phone) {
   let d = String(phone || '').replace(/\D/g, '');
   if (d.startsWith('00')) d = d.slice(2);
@@ -108,6 +108,7 @@ async function loadProducts() {
 }
 
 function isSet(p) { return Array.isArray(p.bundle) && p.bundle.length > 0; }
+function isPick(p) { return p.pickCount > 0; }
 
 function renderProducts() {
   document.getElementById('content').innerHTML = `
@@ -135,15 +136,16 @@ function renderProductRows() {
   const cat = document.getElementById('prodCat').value;
   const list = productsCache.filter(p => (!cat || p.category === cat) && (!q || p.name.toLowerCase().includes(q)));
   document.getElementById('prodBody').innerHTML = list.map(p => {
-    const stock = isSet(p) ? p.availableStock : p.stock;
+    const anySet = isSet(p) || isPick(p);
+    const stock = anySet ? p.availableStock : p.stock;
     const thumb = p.imageThumb || p.image;
     const n = isSet(p) ? p.bundle.reduce((s, b) => s + b.qty, 0) : 0;
     return `<tr>
       <td>${thumb ? `<img class="thumb-sm" src="${esc(thumb)}" alt="" loading="lazy" width="42" height="42">` : '<div class="thumb-sm"></div>'}</td>
-      <td>${esc(p.name)}${!p.active ? ' <span class="pill cancelled">Hidden</span>' : ''}${isSet(p) ? `<br><span class="sub">Set of ${n} perfume${n === 1 ? '' : 's'}</span>` : ''}</td>
+      <td>${esc(p.name)}${!p.active ? ' <span class="pill cancelled">Hidden</span>' : ''}${isPick(p) ? `<br><span class="sub">Customer chooses ${p.pickCount} · from ${p.poolAll ? 'all perfumes' : (p.pickItems || []).length + ' perfumes'}</span>` : (isSet(p) ? `<br><span class="sub">Set of ${n} perfume${n === 1 ? '' : 's'}</span>` : '')}</td>
       <td>${esc(p.category)}</td>
       <td>${p.price} DH${p.compareAtPrice ? ` <s style="color:var(--muted)">${p.compareAtPrice}</s>` : ''}</td>
-      <td class="${stock <= 3 ? 'stock-low' : ''}">${stock}${isSet(p) ? '<br><span class="sub">sets</span>' : ''}</td>
+      <td class="${stock <= 3 ? 'stock-low' : ''}">${stock}${anySet ? '<br><span class="sub">sets</span>' : ''}</td>
       <td class="row-actions">
         <button onclick="openProductModal('${esc(p.id)}')">Edit</button>
         <button onclick="deleteProduct('${esc(p.id)}')" style="border-color:var(--danger);color:var(--danger)">Delete</button>
@@ -152,259 +154,146 @@ function renderProductRows() {
   }).join('') || '<tr><td colspan="6" class="empty">No products found.</td></tr>';
 }
 
-let giftSetItems = [];
+// ----- Gift set builder -----
+let bundleSel = new Map(); // perfume id -> how many of it are in the set
 
-function getPerfumeById(id) {
-  return productsCache.find(x => x.id === id);
-}
-
-function findPerfumeByName(name) {
-  if (!name) return null;
-  const n = name.trim().toLowerCase();
-  return productsCache.find(p => p.category !== 'Gift Sets' && p.name && p.name.trim().toLowerCase() === n) || null;
-}
-
-function addPerfumesFromNames() {
-  const input = document.getElementById('bundleNameInput');
-  if (!input) return;
-  const text = input.value || '';
-  if (!text.trim()) {
-    toast('Enter perfume names separated by commas');
-    return;
-  }
-  const parts = text.split(',');
-  for (let i = 0; i < parts.length; i++) {
-    const raw = parts[i];
-    const name = raw.trim();
-    if (!name) continue;
-    if (giftSetItems.length >= 3) {
-      toast('Maximum 3 perfumes allowed in a gift set');
-      break;
-    }
-    const alreadyExists = giftSetItems.some(item => {
-      if (item.custom) {
-        return (item.name || '').trim().toLowerCase() === name.toLowerCase();
-      }
-      const p = item.product || getPerfumeById(item.productId);
-      return p && p.name && p.name.trim().toLowerCase() === name.toLowerCase();
-    });
-    if (alreadyExists) continue;
-    const match = findPerfumeByName(name);
-    if (match) {
-      giftSetItems.push({ productId: match.id, qty: 1, price: '', product: match });
-    } else {
-      const customId = 'custom_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2,5) + '_' + i;
-      giftSetItems.push({ custom: true, productId: customId, name: name, qty: 1, price: '', product: { name: name } });
-    }
-  }
-  input.value = '';
-  renderGiftSetSelected();
+function renderBundlePicker() {
+  const q = (document.getElementById('bundleSearch').value || '').trim().toLowerCase();
+  const own = document.getElementById('pfId').value;
+  const list = productsCache.filter(p => p.category !== 'Gift Sets' && p.id !== own && (!q || p.name.toLowerCase().includes(q)));
+  document.getElementById('bundleList').innerHTML = list.map(p => {
+    const on = bundleSel.has(p.id);
+    return `<div class="bundle-row">
+      <label class="bl"><input type="checkbox" data-pick="${esc(p.id)}" ${on ? 'checked' : ''}>
+        <span>${esc(p.name)}<small>${esc(p.category)} · ${p.price} DH · ${p.stock} in stock</small></span></label>
+      <input class="bq" type="number" min="1" max="10" value="${bundleSel.get(p.id) || 1}" data-qty="${esc(p.id)}" ${on ? '' : 'disabled'} aria-label="Quantity">
+    </div>`;
+  }).join('') || '<p class="empty" style="padding:14px 0">No perfumes found. Add Men / Women perfumes first.</p>';
   updateBundleSummary();
-}
-
-function removePerfumeFromGiftSet(productId) {
-  giftSetItems = giftSetItems.filter(i => i.productId !== productId);
-  renderGiftSetSelected();
-  updateBundleSummary();
-}
-
-function movePerfumeInGiftSet(productId, direction) {
-  const idx = giftSetItems.findIndex(i => i.productId === productId);
-  if (idx === -1) return;
-  const newIdx = direction === 'up' ? idx - 1 : idx + 1;
-  if (newIdx < 0 || newIdx >= giftSetItems.length) return;
-  const [item] = giftSetItems.splice(idx, 1);
-  giftSetItems.splice(newIdx, 0, item);
-  renderGiftSetSelected();
-  updateBundleSummary();
-}
-
-function updateGiftSetItem(productId, field, value) {
-  const item = giftSetItems.find(i => i.productId === productId);
-  if (!item) return;
-  if (field === 'qty') {
-    let q = parseInt(value, 10);
-    if (isNaN(q) || q < 1) q = 1;
-    if (q > 10) q = 10;
-    item.qty = q;
-  } else if (field === 'price') {
-    if (value === '' || value === null || value === undefined) {
-      item.price = '';
-    } else {
-      let pr = parseFloat(value);
-      if (isNaN(pr) || pr < 0) pr = 0;
-      item.price = pr;
-    }
-  } else if (field === 'name' && item.custom) {
-    item.name = value;
-    if (item.product) item.product.name = value;
-  }
-  updateBundleSummary();
-}
-
-function renderGiftSetSelected() {
-  const container = document.getElementById('bundleSelected');
-  if (giftSetItems.length === 0) {
-    container.innerHTML = '<p class="empty" style="padding:10px 0">No perfumes selected yet. Add names above.</p>';
-    return;
-  }
-  container.innerHTML = giftSetItems.map((item, idx) => {
-    const p = item.product || getPerfumeById(item.productId) || {};
-    const thumb = p.imageThumb || p.image;
-    const name = item.custom ? (item.name || p.name || 'Custom') : (p.name || item.productId);
-    const isCustom = item.custom;
-    const priceVal = (item.price === '' || item.price === undefined || item.price === null) ? '' : item.price;
-    return '<div class="bundle-selected-item">' +
-      '<div class="bsi-header">' +
-        '<div class="bsi-info">' +
-          (thumb && !isCustom ? '<img src="' + esc(thumb) + '" alt="">' : '<div class="bsi-img-placeholder"></div>') +
-          '<div>' +
-            (isCustom ? '<input type="text" value="' + esc(name) + '" onchange="updateGiftSetItem(\'' + esc(item.productId) + '\',\'name\',this.value)" style="background:transparent;border:none;color:var(--cream);font-weight:600;font-size:0.95rem;width:200px">' : '<div class="bsi-name">' + esc(name) + '</div>') +
-            '<div class="sub">' + (isCustom ? 'Custom perfume' : (esc(p.category || ''))) + '</div>' +
-          '</div>' +
-        '</div>' +
-        '<div class="bsi-actions">' +
-          '<button type="button" class="btn small secondary" onclick="movePerfumeInGiftSet(\'' + esc(item.productId) + '\',\'up\')" ' + (idx === 0 ? 'disabled' : '') + '>↑</button>' +
-          '<button type="button" class="btn small secondary" onclick="movePerfumeInGiftSet(\'' + esc(item.productId) + '\',\'down\')" ' + (idx === giftSetItems.length - 1 ? 'disabled' : '') + '>↓</button>' +
-          '<button type="button" class="btn small secondary" style="border-color:var(--danger);color:var(--danger)" onclick="removePerfumeFromGiftSet(\'' + esc(item.productId) + '\')">Remove</button>' +
-        '</div>' +
-      '</div>' +
-      '<div class="bsi-body">' +
-        '<div class="bsi-field">' +
-          '<label>Quantity</label>' +
-          '<input type="number" min="1" max="10" value="' + item.qty + '" onchange="updateGiftSetItem(\'' + esc(item.productId) + '\',\'qty\',this.value)">' +
-        '</div>' +
-        '<div class="bsi-field">' +
-          '<label>Individual price (DH)</label>' +
-          '<input type="number" step="0.01" min="0" value="' + esc(priceVal) + '" onchange="updateGiftSetItem(\'' + esc(item.productId) + '\',\'price\',this.value)" placeholder="No price">' +
-        '</div>' +
-      '</div>' +
-    '</div>';
-  }).join('');
 }
 
 function updateBundleSummary() {
+  const type = document.getElementById('setType').value;
+  const isChoose = type === 'choose';
+  const poolAll = document.getElementById('poolAll').checked;
+  const pickCount = Math.max(1, parseInt(document.getElementById('pickCount').value, 10) || 1);
   const stockInput = document.getElementById('pfStock');
   const hint = document.getElementById('pfStockHint');
-  let totalIndividual = 0;
-  let sets = Infinity;
-  let totalQty = 0;
-  for (const item of giftSetItems) {
-    const p = item.product || getPerfumeById(item.productId);
-    const qty = Math.max(1, parseInt(item.qty, 10) || 1);
-    totalQty += qty;
-    if (item.price !== '' && item.price !== undefined && item.price !== null) {
-      const price = parseFloat(item.price);
-      if (!isNaN(price)) totalIndividual += price * qty;
-    }
-    if (!item.custom && p && p.stock !== undefined) {
-      sets = Math.min(sets, Math.floor((p.stock || 0) / qty));
-    }
-  }
-  if (giftSetItems.length === 0) {
-    document.getElementById('bundleSummary').innerHTML = '<span class="sub">No perfumes selected yet.</span>';
-    if (stockInput) { stockInput.disabled = false; }
-    if (hint) hint.textContent = '';
+  const summary = document.getElementById('bundleSummary');
+  const perfumes = productsCache.filter(p => p.category !== 'Gift Sets');
+
+  if (isChoose) {
+    const list = poolAll ? perfumes.filter(p => p.active) : perfumes.filter(p => bundleSel.has(p.id));
+    const avg = list.length ? Math.round(list.reduce((s, p) => s + p.price, 0) / list.length) : 0;
+    const worth = avg * pickCount;
+    let msg = poolAll
+      ? `Customers can choose <b>${pickCount}</b> from all <b>${list.length}</b> perfumes now in your shop (and any you add later).`
+      : `<b>${list.length}</b> perfume(s) offered; customers choose <b>${pickCount}</b>.`;
+    if (!poolAll && list.length < pickCount) msg += ` <span style="color:var(--danger)">Select at least ${pickCount}.</span>`;
+    if (list.length) msg += `<br>Average perfume price ${avg} DH → ${pickCount} bought separately ≈ <b>${worth} DH</b>
+      <button type="button" class="btn secondary small" onclick="document.getElementById('pfCompareAt').value=${worth}">Use as "compare-at" price</button>`;
+    summary.innerHTML = msg;
+    stockInput.disabled = true;
+    hint.textContent = 'Stock is automatic — it follows how many of the offered perfumes are in stock (each chosen perfume is taken from its own stock).';
     return;
   }
-  if (giftSetItems.length > 3) {
-    document.getElementById('bundleSummary').innerHTML = '<span style="color:var(--danger)">Maximum 3 perfumes allowed.</span>';
-  } else {
-    if (totalIndividual > 0) {
-      document.getElementById('bundleSummary').innerHTML =
-        '<div><b>' + totalQty + '</b> perfume item(s) across <b>' + giftSetItems.length + '</b> type(s) · Combined individual prices: <b>' + totalIndividual.toFixed(2) + ' DH</b></div>' +
-        '<div style="margin-top:6px"><button type="button" class="btn secondary small" onclick="document.getElementById(\'pfPrice\').value = ' + totalIndividual.toFixed(2) + '">Use combined sum as gift set selling price</button> ' +
-        '<button type="button" class="btn secondary small" onclick="document.getElementById(\'pfCompareAt\').value = ' + totalIndividual.toFixed(2) + '">Use as "compare-at" price</button></div>';
-    } else {
-      document.getElementById('bundleSummary').innerHTML =
-        '<div><b>' + totalQty + '</b> perfume item(s) across <b>' + giftSetItems.length + '</b> type(s) · No individual prices set yet.</div>';
-    }
+
+  let total = 0, sets = Infinity;
+  for (const [id, qty] of bundleSel) {
+    const p = productsCache.find(x => x.id === id);
+    if (!p) continue;
+    total += p.price * qty;
+    sets = Math.min(sets, Math.floor(p.stock / qty));
   }
-  if (stockInput) stockInput.disabled = true;
-  if (hint) {
-    hint.textContent = giftSetItems.some(i => i.custom) ? 'Stock is automatic for existing perfumes only. Custom perfumes don\'t affect inventory.' : 'Stock is automatic: ' + (isFinite(sets) ? sets : 0) + ' complete set(s) available, based on the perfumes\' own stock.';
+  if (bundleSel.size === 0) {
+    summary.innerHTML = '<span class="sub">No perfumes selected yet.</span>';
+    stockInput.disabled = false;
+    hint.textContent = '';
+    return;
   }
+  summary.innerHTML =
+    `<b>${[...bundleSel.values()].reduce((a, b) => a + b, 0)}</b> perfume(s) selected · worth <b>${total} DH</b> separately
+     <button type="button" class="btn secondary small" onclick="document.getElementById('pfCompareAt').value=${total}">Use as "compare-at" price</button>`;
+  stockInput.disabled = true;
+  hint.textContent = `Stock is automatic: ${isFinite(sets) ? sets : 0} complete set(s) available, based on the perfumes' own stock.`;
 }
+
+// Shows only the parts of the gift-set form that apply to the chosen kind of set.
+function syncSetUI() {
+  const isChoose = document.getElementById('setType').value === 'choose';
+  const poolAll = document.getElementById('poolAll').checked;
+  document.getElementById('bundleSection').classList.toggle('choose-mode', isChoose);
+  document.getElementById('chooseOpts').style.display = isChoose ? 'block' : 'none';
+  const showList = !isChoose || !poolAll;
+  document.getElementById('listBox').style.display = showList ? 'block' : 'none';
+  document.getElementById('bundleTools').style.display = isChoose ? 'flex' : 'none';
+  document.getElementById('listLabel').textContent = isChoose ? 'Perfumes customers can choose from' : 'Perfumes in this gift set';
+  document.getElementById('listHelp').textContent = isChoose
+    ? 'Tick the perfumes you want to offer. Use the buttons to select a whole group at once.'
+    : 'Tick the perfumes, and set how many of each go in the set.';
+  if (showList) renderBundlePicker(); else updateBundleSummary();
+}
+document.getElementById('setType').addEventListener('change', syncSetUI);
+document.getElementById('poolAll').addEventListener('change', syncSetUI);
+document.getElementById('pickCount').addEventListener('input', updateBundleSummary);
+document.querySelector('#bundleTools').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-bulk]');
+  if (!b) return;
+  const kind = b.dataset.bulk;
+  if (kind === 'none') bundleSel = new Map();
+  else for (const p of productsCache) if (p.category !== 'Gift Sets' && (kind === 'all' || p.category === kind)) bundleSel.set(p.id, 1);
+  renderBundlePicker();
+});
+
+document.getElementById('bundleList').addEventListener('change', (e) => {
+  const t = e.target;
+  if (t.dataset.pick) {
+    const qtyInput = t.closest('.bundle-row').querySelector('.bq');
+    if (t.checked) { bundleSel.set(t.dataset.pick, Math.max(1, parseInt(qtyInput.value, 10) || 1)); qtyInput.disabled = false; }
+    else { bundleSel.delete(t.dataset.pick); qtyInput.disabled = true; }
+  } else if (t.dataset.qty) {
+    const q = Math.min(10, Math.max(1, parseInt(t.value, 10) || 1));
+    t.value = q;
+    if (bundleSel.has(t.dataset.qty)) bundleSel.set(t.dataset.qty, q);
+  }
+  updateBundleSummary();
+});
+document.getElementById('bundleSearch').addEventListener('input', renderBundlePicker);
 
 function syncCategoryUI() {
   const isGift = document.getElementById('pfCategory').value === 'Gift Sets';
   document.getElementById('bundleSection').style.display = isGift ? 'block' : 'none';
-  const nameInput = document.getElementById('pfName');
-  const nameSelect = document.getElementById('pfNameSelect');
-  if (isGift) {
-    if (nameInput) nameInput.style.display = 'none';
-    if (nameSelect) {
-      nameSelect.style.display = 'block';
-      const own = document.getElementById('pfId').value;
-      const options = productsCache
-        .filter(p => p.id !== own)
-        .sort((a,b) => a.name.localeCompare(b.name));
-      nameSelect.innerHTML = '<option value="">Select a product...</option>' + options.map(p => '<option value="' + esc(p.name) + '">' + esc(p.name) + ' (' + esc(p.category) + ')</option>').join('');
-      // if current nameInput has value and matches, try to set select
-      if (nameInput && nameInput.value) {
-        for (let i = 0; i < nameSelect.options.length; i++) {
-          if (nameSelect.options[i].value === nameInput.value) {
-            nameSelect.value = nameInput.value;
-            break;
-          }
-        }
-      }
-    }
-    renderGiftSetSelected();
-    updateBundleSummary();
-  } else {
-    if (nameInput) nameInput.style.display = 'block';
-    if (nameSelect) nameSelect.style.display = 'none';
-    const stockInput = document.getElementById('pfStock');
-    const hint = document.getElementById('pfStockHint');
-    if (stockInput) { stockInput.disabled = false; }
-    if (hint) hint.textContent = '';
-  }
+  if (isGift) syncSetUI();
+  else { document.getElementById('pfStock').disabled = false; document.getElementById('pfStockHint').textContent = ''; }
 }
 document.getElementById('pfCategory').addEventListener('change', syncCategoryUI);
 
 function openProductModal(id) {
   document.getElementById('productForm').reset();
   document.getElementById('pfPreview').style.display = 'none';
-  const dropdown = document.getElementById('bundleDropdown');
-  if (dropdown) dropdown.value = '';
-  const cname = document.getElementById('bundleCustomName');
-  const cprice = document.getElementById('bundleCustomPrice');
-  if (cname) cname.value = '';
-  if (cprice) cprice.value = '';
-  giftSetItems = [];
+  document.getElementById('bundleSearch').value = '';
+  bundleSel = new Map();
   if (id) {
     const p = productsCache.find(x => x.id === id);
     document.getElementById('productModalTitle').textContent = 'Edit Product';
     document.getElementById('pfId').value = p.id;
-    document.getElementById('pfName').value = p.name || '';
+    document.getElementById('pfName').value = p.name;
     document.getElementById('pfCategory').value = p.category;
     document.getElementById('pfPrice').value = p.price;
     document.getElementById('pfCompareAt').value = p.compareAtPrice || '';
     document.getElementById('pfStock').value = p.stock;
     document.getElementById('pfDescription').value = p.description || '';
     document.getElementById('pfActive').checked = p.active;
-    if (Array.isArray(p.bundle)) {
-      giftSetItems = p.bundle.map(b => {
-        if (b.custom || b.customName || (!b.productId && b.name) || (typeof b.productId === 'string' && b.productId.indexOf('custom_') === 0)) {
-          return {
-            custom: true,
-            name: b.name || b.customName || 'Custom',
-            productId: b.productId || ('custom_' + Math.random().toString(36).substr(2,9)),
-            qty: Math.max(1, parseInt(b.qty, 10) || 1),
-            price: parseFloat(b.price) || 0,
-            product: { name: b.name || b.customName || 'Custom' }
-          };
-        }
-        const prod = getPerfumeById(b.productId) || {};
-        const customPrice = b.price !== undefined && b.price !== null ? parseFloat(b.price) : (b.customPrice !== undefined && b.customPrice !== null ? parseFloat(b.customPrice) : (prod.price || 0));
-        return {
-          productId: b.productId,
-          qty: Math.max(1, parseInt(b.qty, 10) || 1),
-          price: isNaN(customPrice) ? (prod.price || 0) : customPrice,
-          product: prod
-        };
-      });
+    if (isPick(p)) {
+      document.getElementById('setType').value = 'choose';
+      document.getElementById('pickCount').value = p.pickCount;
+      document.getElementById('poolAll').checked = !!p.poolAll;
+      (p.pool || []).forEach(id => bundleSel.set(id, 1));
+    } else {
+      document.getElementById('setType').value = isSet(p) ? 'fixed' : 'choose';
+      document.getElementById('pickCount').value = 3;
+      document.getElementById('poolAll').checked = true;
+      (p.bundle || []).forEach(b => bundleSel.set(b.productId, b.qty));
     }
     const thumb = p.imageThumb || p.image;
     if (thumb) { document.getElementById('pfPreview').src = thumb; document.getElementById('pfPreview').style.display = 'block'; }
@@ -412,6 +301,9 @@ function openProductModal(id) {
     document.getElementById('productModalTitle').textContent = 'Add Product';
     document.getElementById('pfId').value = '';
     document.getElementById('pfActive').checked = true;
+    document.getElementById('setType').value = 'choose';
+    document.getElementById('pickCount').value = 3;
+    document.getElementById('poolAll').checked = true;
   }
   syncCategoryUI();
   document.getElementById('productModalOverlay').classList.add('show');
@@ -430,40 +322,28 @@ document.getElementById('productForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const id = document.getElementById('pfId').value;
   const category = document.getElementById('pfCategory').value;
-  if (category === 'Gift Sets' && giftSetItems.length > 3) {
-    toast('Maximum 3 perfumes allowed in a gift set');
-    return;
-  }
   const fd = new FormData();
-  let nameValue = document.getElementById('pfName').value;
-  if (category === 'Gift Sets') {
-    const nameSelect = document.getElementById('pfNameSelect');
-    if (nameSelect && nameSelect.style.display !== 'none') {
-      nameValue = nameSelect.value;
-    }
-  }
-  fd.append('name', nameValue);
+  fd.append('name', document.getElementById('pfName').value);
   fd.append('category', category);
   fd.append('price', document.getElementById('pfPrice').value);
   fd.append('compareAtPrice', document.getElementById('pfCompareAt').value);
-  const stockInput = document.getElementById('pfStock');
-  if (stockInput && !stockInput.disabled) fd.append('stock', stockInput.value);
+  if (!document.getElementById('pfStock').disabled) fd.append('stock', document.getElementById('pfStock').value);
   fd.append('description', document.getElementById('pfDescription').value);
   fd.append('active', document.getElementById('pfActive').checked);
   if (category === 'Gift Sets') {
-    const bundleData = giftSetItems.map(item => {
-      if (item.custom) {
-        return { custom: true, name: item.name || (item.product && item.product.name) || 'Custom', productId: item.productId, qty: Math.max(1, parseInt(item.qty, 10) || 1), price: (item.price === '' || item.price === undefined || item.price === null) ? '' : parseFloat(item.price) };
-      }
-      return { productId: item.productId, qty: Math.max(1, parseInt(item.qty, 10) || 1), price: (item.price === '' || item.price === undefined || item.price === null) ? '' : parseFloat(item.price) };
-    });
-    fd.append('bundle', JSON.stringify(bundleData));
-  } else {
-    fd.append('bundle', JSON.stringify([]));
+    const type = document.getElementById('setType').value;
+    fd.append('setType', type);
+    if (type === 'choose') {
+      const poolAll = document.getElementById('poolAll').checked;
+      const pickCount = parseInt(document.getElementById('pickCount').value, 10);
+      if (!poolAll && bundleSel.size < pickCount) { toast(`Select at least ${pickCount} perfumes for customers to choose from, or tick "Offer ALL perfumes".`); return; }
+      fd.append('pickCount', pickCount);
+      fd.append('poolAll', poolAll);
+      fd.append('pool', JSON.stringify(poolAll ? [] : [...bundleSel.keys()]));
+    } else {
+      fd.append('bundle', JSON.stringify([...bundleSel].map(([productId, qty]) => ({ productId, qty }))));
+    }
   }
-
-checkAuth();
-
   const file = document.getElementById('pfImage').files[0];
   if (file) fd.append('image', file);
 
@@ -481,22 +361,151 @@ checkAuth();
 async function deleteProduct(id) {
   if (!confirm('Delete this product permanently?')) return;
   try {
-    await api('/api/products/admin/' + id, { method: 'DELETE' });
-    toast('Product deleted');
+    const res = await api('/api/products/admin/' + id, { method: 'DELETE' });
+    toast(res.removedFromSets && res.removedFromSets.length ? `Product deleted (also removed from: ${res.removedFromSets.join(', ')})` : 'Product deleted');
     loadProducts();
   } catch (err) { toast(err.message); }
 }
-  if (category === 'Gift Sets') {
-    const bundleData = giftSetItems.map(item => {
-      if (item.custom) {
-        return { custom: true, name: item.name || (item.product && item.product.name) || 'Custom', productId: item.productId, qty: Math.max(1, parseInt(item.qty, 10) || 1), price: parseFloat(item.price) || 0 };
-      }
-      return { productId: item.productId, qty: Math.max(1, parseInt(item.qty, 10) || 1), price: parseFloat(item.price) || 0 };
-    });
-    fd.append('bundle', JSON.stringify(bundleData));
-  } else {
-    fd.append('bundle', JSON.stringify([]));
+
+// ---------------- Orders ----------------
+const STATUSES = ['New', 'Confirmed', 'Preparing', 'Shipped', 'Delivered', 'Cancelled'];
+
+function orderMessage(o) {
+  const id = o.id, total = `${o.total} DH`;
+  const line = {
+    New: `We received your order ${id} (${total}, Cash on Delivery). Could you confirm your delivery address and a good time for delivery?`,
+    Confirmed: `Your order ${id} is confirmed. Total to pay on delivery: ${total}.`,
+    Preparing: `We are preparing your order ${id}.`,
+    Shipped: `Your order ${id} is on its way! Total to pay on delivery: ${total}.`,
+    Delivered: `Thank you for your order ${id}! We hope you love it.`,
+    Cancelled: `Your order ${id} has been cancelled. Message us if you have any questions.`
+  }[o.status] || `About your order ${id}.`;
+  return `Hello ${o.name}, this is Maison Bennani. ${line}`;
+}
+
+async function loadOrders() {
+  const content = document.getElementById('content');
+  content.innerHTML = '<p class="empty">Loading orders...</p>';
+  try {
+    ordersCache = await api('/api/orders/admin/all');
+    renderOrders();
+  } catch (e) { content.innerHTML = '<p class="empty">Could not load orders.</p>'; }
+}
+
+function renderOrders() {
+  const content = document.getElementById('content');
+  if (ordersCache.length === 0) {
+    content.innerHTML = '<p class="empty">No orders yet. Orders placed on the storefront will appear here.</p>';
+    return;
   }
+  const fresh = ordersCache.filter(o => o.status === 'New').length;
+  content.innerHTML = `
+    <div class="bar">
+      <div><strong>${ordersCache.length}</strong> orders · <strong>${fresh}</strong> new</div>
+      <select id="orderFilter" onchange="renderOrderRows()">
+        <option value="">All statuses</option>${STATUSES.map(s => `<option>${s}</option>`).join('')}
+      </select>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Order</th><th>Customer</th><th>Address</th><th>Items</th><th>Total</th><th>Date</th><th>Status</th></tr></thead>
+        <tbody id="orderBody"></tbody>
+      </table>
+    </div>`;
+  renderOrderRows();
+}
+
+function renderOrderRows() {
+  const f = document.getElementById('orderFilter').value;
+  const list = ordersCache.filter(o => !f || o.status === f);
+  document.getElementById('orderBody').innerHTML = list.map(o => `
+    <tr>
+      <td>${esc(o.id)}</td>
+      <td>${esc(o.name)}<br><span class="sub">${esc(o.phone)}</span><br>${waButton(o.phone, orderMessage(o))}</td>
+      <td>${esc(o.address)}<br><span class="sub">${esc(o.city)}</span></td>
+      <td>${o.items.map(i => `${i.qty}× ${esc(i.name)}${Array.isArray(i.bundle) ? `<br><span class="sub">${i.bundle.map(b => `${b.qty * i.qty}× ${esc(b.name)}`).join(', ')}</span>` : ''}`).join('<br>')}</td>
+      <td>${o.total} DH</td>
+      <td class="sub">${new Date(o.createdAt).toLocaleString()}</td>
+      <td>
+        <select onchange="updateStatus('${esc(o.id)}', this.value)">
+          ${STATUSES.map(s => `<option ${s === o.status ? 'selected' : ''}>${s}</option>`).join('')}
+        </select>
+      </td>
+    </tr>`).join('') || '<tr><td colspan="7" class="empty">No orders with that status.</td></tr>';
+}
+
+async function updateStatus(id, status) {
+  try {
+    const updated = await sendJson('PUT', '/api/orders/admin/' + id + '/status', { status });
+    const i = ordersCache.findIndex(x => x.id === id);
+    if (i >= 0) ordersCache[i] = updated;
+    toast('Order status updated');
+    renderOrders();
+  } catch (err) {
+    toast(err.message);
+    loadOrders(); // put the dropdown back to the real status
+  }
+}
+
+// ---------------- Settings ----------------
+async function loadSettings() {
+  const content = document.getElementById('content');
+  content.innerHTML = '<p class="empty">Loading settings...</p>';
+  try {
+    settingsCache = await api('/api/settings');
+    renderSettings();
+  } catch (e) { content.innerHTML = '<p class="empty">Could not load settings.</p>'; }
+}
+
+function renderSettings() {
+  const s = settingsCache;
+  const cities = Object.keys(s.cityFees);
+  document.getElementById('content').innerHTML = `
+    <h2 style="color:var(--gold-soft);margin-bottom:16px">Settings</h2>
+    <div class="settings-grid">
+      <div class="field">
+        <label>Shop WhatsApp number (customers can message you from the site)</label>
+        <input id="setWa" type="tel" value="${esc(s.whatsappNumber || '')}" placeholder="06XXXXXXXX or +212 6XX XXX XXX">
+      </div>
+      <div class="field"><label>Default delivery fee (DH)</label><input id="setDefault" type="number" value="${s.deliveryDefault}"></div>
+      <div class="field"><label>Free delivery above (DH)</label><input id="setFree" type="number" value="${s.freeDeliveryThreshold}"></div>
+      <div class="field">
+        <label>Per-city delivery fees</label>
+        <div id="cityFeesList">
+          ${cities.map(c => `<div class="city-fee-row"><span>${esc(c)}</span><input type="number" data-city="${esc(c)}" value="${s.cityFees[c]}"></div>`).join('')}
+        </div>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <input id="newCityName" placeholder="Add city..." style="flex:1;padding:8px;background:#0e0d0c;border:1px solid var(--line);color:var(--cream);border-radius:6px">
+          <button class="btn secondary" onclick="addCityRow()">Add</button>
+        </div>
+      </div>
+      <button class="btn" onclick="saveSettings()">Save Settings</button>
+    </div>`;
+}
+
+function addCityRow() {
+  const name = document.getElementById('newCityName').value.trim();
+  if (!name) return;
+  const row = document.createElement('div');
+  row.className = 'city-fee-row';
+  row.innerHTML = `<span>${esc(name)}</span><input type="number" data-city="${esc(name)}" value="${settingsCache.deliveryDefault}">`;
+  document.getElementById('cityFeesList').appendChild(row);
+  document.getElementById('newCityName').value = '';
+}
+
+async function saveSettings() {
+  const cityFees = {};
+  document.querySelectorAll('#cityFeesList input').forEach(inp => { cityFees[inp.dataset.city] = parseFloat(inp.value) || 0; });
+  try {
+    settingsCache = await sendJson('PUT', '/api/settings', {
+      whatsappNumber: document.getElementById('setWa').value,
+      deliveryDefault: document.getElementById('setDefault').value,
+      freeDeliveryThreshold: document.getElementById('setFree').value,
+      cityFees
+    });
+    toast('Settings saved');
+    renderSettings();
+  } catch (err) { toast(err.message); }
+}
 
 checkAuth();
-

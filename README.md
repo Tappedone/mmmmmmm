@@ -8,14 +8,22 @@ name, **phone number**, city and address at checkout, pays **Cash on Delivery**,
 **Storefront**
 - On arrival it asks *What are you shopping for?* — Men / Women / Gift Sets
 - Category filter, instant search, price sorting, product pages, bag, quick checkout
-- **Gift Sets** show exactly which perfumes are inside and what you save
+- **Gift Sets** come in two kinds: a **"choose your own"** set (for example *any 3 perfumes for 550 DH* — the customer picks
+  their 3 from a searchable list, and can't continue until they've chosen exactly 3), or a **fixed** set that shows what's inside
+  and what the customer saves
 - Floating WhatsApp button (appears once you set your number in Settings)
 - Photos are optimized automatically; fonts are hosted on the site (no Google requests)
 
 **Admin panel — `/admin`**
 - **Products**: add / edit / delete, search, photo upload, price, discount ("compare-at" price), stock, hide/show
-- **Gift Sets**: tick perfumes from Men and Women, choose how many of each. Stock is automatic — selling a set also
-  reduces the stock of the perfumes inside it, so you can never oversell
+- **Gift Sets** — two kinds:
+  - **Customer chooses their perfumes** (the default): you decide how many they pick (3, for example) and set **one price
+    for the whole set**. Tick **Offer ALL perfumes** to let them choose from every Men and Women perfume — including ones you
+    add later — or untick it and choose a list yourself (buttons: *All Men*, *All Women*, *Select all*, *Clear*).
+    A customer picks different perfumes (not the same one twice).
+  - **Fixed set**: always the same perfumes, with how many of each.
+  Stock is automatic either way — each perfume a customer picks is taken from that perfume's own stock, so nothing can be
+  sold twice, and your **Orders** list shows exactly which perfumes each customer chose.
 - **Orders**: customer, phone, address, items (and what's inside each set), total, date, status — plus a one-tap
   **WhatsApp** button that opens a ready-written message for that order's status
 - **Settings**: your WhatsApp number, delivery fees per city, free-delivery threshold

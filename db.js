@@ -23,7 +23,8 @@ function seed() {
       const p = {
         id: id('prod'), name, category, price, compareAtPrice: null, stock,
         description: 'Sample product — replace this description and photo from the admin panel.',
-        bundle: [], image: null, imageThumb: null, active: true, createdAt: now, ...extra
+        bundle: [], pickCount: 0, poolAll: false, pool: [],
+        image: null, imageThumb: null, active: true, createdAt: now, ...extra
       };
       products.push(p);
       return p;
@@ -31,6 +32,7 @@ function seed() {
     const men = ['Noir Absolu', 'Oud Royal', 'Steel Vetiver'].map((n, i) => mk(n, 'Men', 229 + i * 20, 20));
     const women = ['Rose Éclat', 'Jasmin Doré', 'Velvet Iris'].map((n, i) => mk(n, 'Women', 249 + i * 20, 20));
     mk('Duo Prestige', 'Gift Sets', 420, 0, { compareAtPrice: men[0].price + women[0].price, bundle: [{ productId: men[0].id, qty: 1 }, { productId: women[0].id, qty: 1 }] });
+    mk('Choose Your 3', 'Gift Sets', 550, 0, { description: 'Pick any 3 perfumes from our collection for one special price.', pickCount: 3, poolAll: true });
     mk('Trio Signature', 'Gift Sets', 590, 0, { bundle: [{ productId: men[1].id, qty: 1 }, { productId: women[1].id, qty: 1 }, { productId: women[2].id, qty: 1 }] });
   }
   return {

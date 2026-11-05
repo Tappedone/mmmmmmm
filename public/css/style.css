@@ -167,3 +167,30 @@ html.seen .landing-picker{display:none;}
 
 /* Hidden trap field for bots — people never see it. */
 .hp{position:absolute; left:-10000px; top:auto; width:1px; height:1px; overflow:hidden;}
+
+
+/* Choose-your-own gift set */
+.picker{margin-top:18px; border-top:1px solid var(--line); padding-top:14px;}
+.picker h4{font-family:'Cormorant Garamond',serif; color:var(--gold-soft); font-size:1.2rem; font-weight:600;}
+.pk-meta{color:var(--muted); font-size:.82rem; margin:6px 0 10px;}
+.pk-meta b{color:var(--gold-soft);}
+.pk-chips{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px;}
+.pk-chip{background:rgba(201,162,75,.12); border:1px solid var(--gold); color:var(--gold-soft); padding:5px 10px; border-radius:16px; font-size:.75rem;}
+.pk-filters{display:flex; flex-direction:column; gap:8px; margin-bottom:8px;}
+.pk-filters input{width:100%; padding:10px 12px; background:#0e0d0c; border:1px solid var(--line); color:var(--cream); border-radius:8px; font-size:.9rem;}
+.pk-cats{display:flex; gap:6px;}
+.pk-cats button{border:1px solid var(--line); color:var(--muted); padding:5px 14px; border-radius:16px; font-size:.75rem;}
+.pk-cats button.active{border-color:var(--gold); color:var(--gold-soft);}
+.pk-list{max-height:320px; overflow-y:auto; border:1px solid var(--line); border-radius:10px;}
+.pk-row{display:flex; align-items:center; gap:12px; width:100%; padding:8px 10px; border-bottom:1px solid var(--line); color:var(--cream); text-align:left;}
+.pk-row:last-child{border-bottom:none;}
+.pk-row .mini{width:46px; height:46px; border-radius:6px; background:#0e0d0c; overflow:hidden; display:flex; align-items:center; justify-content:center; flex-shrink:0;}
+.pk-row .mini img{width:100%; height:100%; object-fit:cover;}
+.pk-row .mini svg{width:55%; opacity:.6;}
+.pk-row .nm{flex:1; font-size:.88rem;}
+.pk-row .nm small{display:block; color:var(--muted); font-size:.7rem; margin-top:2px;}
+.pk-row .tick{width:26px; height:26px; border:1px solid var(--line); border-radius:50%; display:flex; align-items:center; justify-content:center; color:#141311; font-weight:700;}
+.pk-row.on{background:rgba(201,162,75,.1);}
+.pk-row.on .tick{background:var(--gold); border-color:var(--gold);}
+.pk-row:disabled{opacity:.4; cursor:not-allowed;}
+.pk-addbar{position:sticky; bottom:-18px; background:var(--near-black); padding:12px 0 6px; margin-top:12px;}

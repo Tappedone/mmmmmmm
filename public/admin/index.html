@@ -49,9 +49,7 @@
     <h2 id="productModalTitle">Add Product</h2>
     <form id="productForm">
       <input type="hidden" id="pfId">
-      <label>Product name</label>
-      <input required id="pfName">
-      <select id="pfNameSelect" style="display:none"></select>
+      <label>Product name</label><input required id="pfName">
       <label>Category</label>
       <select id="pfCategory"><option>Men</option><option>Women</option><option>Gift Sets</option></select>
       <label>Price (DH)</label><input required type="number" step="0.01" id="pfPrice">
@@ -61,15 +59,31 @@
       <label>Description</label><textarea id="pfDescription" rows="3"></textarea>
 
       <div id="bundleSection" style="display:none">
-        <label>Perfumes in this gift set</label>
-        <div class="sub" style="margin-bottom:8px">Paste perfume names separated by commas (e.g. Rose Éclat, Oud Royal). Existing perfumes will be auto-imported with no price; unmatched names will be added as custom entries.</div>
-        <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center">
-          <input id="bundleNameInput" placeholder="Enter names separated by commas" style="flex:1;min-width:200px">
-          <button type="button" class="btn secondary small" onclick="addPerfumesFromNames()">Add</button>
+        <label>How does this gift set work?</label>
+        <select id="setType">
+          <option value="choose">Customer chooses their perfumes (for example any 3)</option>
+          <option value="fixed">Fixed set — always the same perfumes</option>
+        </select>
+
+        <div id="chooseOpts">
+          <label>How many perfumes does the customer choose?</label>
+          <input id="pickCount" type="number" min="1" max="10" value="3">
+          <label class="check"><input type="checkbox" id="poolAll" checked><span>Offer ALL perfumes (Men + Women) — including ones I add later</span></label>
         </div>
-        <div class="sub" style="margin-bottom:6px">Selected perfumes (max 3)</div>
-        <div id="bundleSelected" class="bundle-selected"></div>
-        <div id="bundleSummary" class="bundle-summary" style="margin-top:10px"></div>
+
+        <div id="listBox">
+          <label id="listLabel">Perfumes</label>
+          <div class="sub" id="listHelp" style="margin-bottom:8px"></div>
+          <div id="bundleTools" class="bundle-tools">
+            <button type="button" class="btn secondary small" data-bulk="all">Select all</button>
+            <button type="button" class="btn secondary small" data-bulk="Men">All Men</button>
+            <button type="button" class="btn secondary small" data-bulk="Women">All Women</button>
+            <button type="button" class="btn secondary small" data-bulk="none">Clear</button>
+          </div>
+          <input id="bundleSearch" placeholder="Search perfumes..." autocomplete="off">
+          <div id="bundleList" class="bundle-list"></div>
+        </div>
+        <div id="bundleSummary" class="bundle-summary"></div>
       </div>
 
       <label>Product image</label><input type="file" id="pfImage" accept="image/png,image/jpeg,image/webp">

@@ -4,7 +4,7 @@ const db = require('../db');
 const { requireAdmin } = require('../middleware/auth');
 const mailer = require('../utils/mailer');
 const fieldCrypto = require('../utils/crypto');
-const { isBundle } = require('../utils/bundles');
+const { isBundle, isPickSet, poolOf } = require('../utils/bundles');
 const { normalizePhone } = require('../utils/phone');
 
 const router = express.Router();
@@ -78,9 +78,9 @@ router.post('/', orderLimiter, (req, res) => {
 
   const byId = new Map(data.products.map(p => [p.id, p]));
 
-  // Work out how many of each individual perfume this order uses. A gift-set bundle
-  // uses the perfumes inside it, so the totals are added up across the WHOLE order —
-  // otherwise one perfume could be sold twice (once alone, once inside a set).
+  // Work out how many of each individual perfume this order uses. A gift set uses the perfumes
+  // inside it (fixed ones, or the ones the customer chose), so the totals are added up across the
+  // WHOLE order — otherwise one perfume could be sold twice (once alone, once inside a set).
   const need = new Map();
   const addNeed = (id, units) => need.set(id, (need.get(id) || 0) + units);
   const lines = [];
@@ -92,83 +92,49 @@ router.post('/', orderLimiter, (req, res) => {
       return res.status(400).json({ error: 'One of the items in your bag is no longer available' });
     }
     const qty = Math.min(50, Math.max(1, parseInt(line.qty, 10) || 1));
-    if (isBundle(product) || product.category === 'Gift Sets') {
-      let bundleToUse = Array.isArray(product.bundle) ? product.bundle : [];
-      if (product.category === 'Gift Sets' && bundleToUse.length === 0) {
-        // auto-include all perfumes
-        for (const [pid, prod] of byId) {
-          if (prod && prod.category && prod.category !== 'Gift Sets' && prod.active !== false) {
-            bundleToUse.push({ productId: pid, qty: 1 });
-          }
-        }
+
+    // `parts` = the individual perfumes ONE unit of this line uses
+    let parts;
+    if (isBundle(product)) {
+      parts = product.bundle.map(b => ({ productId: b.productId, qty: b.qty }));
+    } else if (isPickSet(product)) {
+      // "Choose your own" set: exactly pickCount DIFFERENT perfumes, all from this set's list.
+      // This is checked here on the server — the browser's choice is never trusted.
+      const allowed = new Set(poolOf(product, data.products).map(x => x.id));
+      const picks = Array.isArray(line.picks) ? line.picks.map(String) : [];
+      const distinct = new Set(picks);
+      if (picks.length !== product.pickCount || distinct.size !== picks.length || !picks.every(id => allowed.has(id))) {
+        return res.status(400).json({ error: `Please choose exactly ${product.pickCount} different perfumes for "${product.name}"` });
       }
-      for (const b of bundleToUse) {
-        if (b.custom || b.customName || (!b.productId && b.name) || (typeof b.productId === 'string' && b.productId.indexOf('custom_') === 0)) {
-          continue;
-        }
-        if (b.productId) addNeed(b.productId, (b.qty || 1) * qty);
-      }
+      parts = picks.map(id => ({ productId: id, qty: 1 }));
     } else {
-      addNeed(product.id, qty);
+      parts = [{ productId: product.id, qty: 1 }];
     }
+
+    for (const part of parts) addNeed(part.productId, part.qty * qty);
     subtotal += product.price * qty;
-    lines.push({ product, qty, bundleOverride: (product.category === 'Gift Sets' && (!Array.isArray(product.bundle) || product.bundle.length === 0)) ? (function(){ const b=[]; for (const [pid,prod] of byId){ if(prod&&prod.category&&prod.category!=='Gift Sets'&&prod.active!==false){b.push({productId:pid,qty:1});}} return b; })() : null });
+    lines.push({ product, qty, parts, isSet: isBundle(product) || isPickSet(product) });
   }
 
-  for (const { product, qty } of lines) {
-    if (isBundle(product) || product.category === 'Gift Sets') {
-      let bundleToUse = Array.isArray(product.bundle) ? product.bundle : [];
-      if (product.category === 'Gift Sets' && bundleToUse.length === 0) {
-        bundleToUse = [];
-        for (const [pid, prod] of byId) {
-          if (prod && prod.category && prod.category !== 'Gift Sets' && prod.active !== false) {
-            bundleToUse.push({ productId: pid, qty: 1 });
-          }
-        }
-      }
-      const parts = bundleToUse.filter(b => !(b.custom || b.customName || (!b.productId && b.name) || (typeof b.productId === 'string' && b.productId.indexOf('custom_') === 0)));
-      for (const b of parts) {
-        const id = b.productId;
-        const part = byId.get(id);
-        if (!part || part.stock < (need.get(id) || 0)) {
-          return res.status(400).json({ error: `Sorry, "${product.name}" is no longer available in that quantity` });
-        }
-      }
-    } else {
-      const part = product;
-      if (part.stock < need.get(part.id)) {
+  for (const { product, parts } of lines) {
+    for (const part of parts) {
+      const perfume = byId.get(part.productId);
+      if (!perfume || perfume.stock < need.get(part.productId)) {
         return res.status(400).json({ error: `Sorry, "${product.name}" is no longer available in that quantity` });
       }
     }
   }
 
-  const lineItems = lines.map(({ product, qty }) => {
+  const lineItems = lines.map(({ product, qty, parts, isSet }) => {
     const item = { productId: product.id, name: product.name, price: product.price, qty };
-    if (isBundle(product) || product.category === 'Gift Sets') {
-      let bundleToUse = Array.isArray(product.bundle) ? product.bundle : [];
-      if (product.category === 'Gift Sets' && bundleToUse.length === 0) {
-        bundleToUse = [];
-        for (const [pid, prod] of byId) {
-          if (prod && prod.category && prod.category !== 'Gift Sets' && prod.active !== false) {
-            bundleToUse.push({ productId: pid, qty: 1 });
-          }
-        }
-      }
-      item.bundle = bundleToUse.map(b => {
-        if (b.custom || b.customName || (!b.productId && b.name) || (typeof b.productId === 'string' && b.productId.indexOf('custom_') === 0)) {
-          return { productId: b.productId || null, name: b.name || b.customName || 'Custom Perfume', qty: b.qty || 1, custom: true };
-        }
-        const found = byId.get(b.productId);
-        return { productId: b.productId, name: found ? found.name : b.name, qty: b.qty || 1 };
-      });
+    if (isSet) {
+      // what's inside this set (also lets a cancelled order put the right perfumes back in stock)
+      item.bundle = parts.map(part => ({ productId: part.productId, name: byId.get(part.productId).name, qty: part.qty }));
     }
     return item;
   });
 
-  for (const [id, units] of need) {
-    const p = byId.get(id);
-    if (p) p.stock -= units;
-  }
+  for (const [id, units] of need) byId.get(id).stock -= units;
 
   const deliveryFee = deliveryFeeFor(data.settings, city, subtotal);
   const order = {
@@ -208,13 +174,10 @@ router.get('/admin/all', requireAdmin, (req, res) => {
 // How many of each individual perfume an order holds (looking inside gift sets).
 function orderUnits(order) {
   const units = new Map();
-  const add = (id, n) => { if (id && !(typeof id === 'string' && id.indexOf('custom_') === 0)) units.set(id, (units.get(id) || 0) + n); };
+  const add = (id, n) => { if (id) units.set(id, (units.get(id) || 0) + n); };
   for (const item of order.items || []) {
     if (Array.isArray(item.bundle)) {
-      for (const b of item.bundle) {
-        if (b.custom) continue;
-        add(b.productId, (b.qty || 1) * item.qty);
-      }
+      for (const b of item.bundle) add(b.productId, b.qty * item.qty);
     } else {
       add(item.productId, item.qty);
     }

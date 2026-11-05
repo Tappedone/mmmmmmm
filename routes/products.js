@@ -7,7 +7,7 @@ const crypto = require('crypto');
 const db = require('../db');
 const { requireAdmin } = require('../middleware/auth');
 const { UPLOAD_DIR } = require('../config');
-const { isBundle, enrichProduct } = require('../utils/bundles');
+const { SET_CATEGORIES, isBundle, isPickSet, enrichProduct } = require('../utils/bundles');
 
 const router = express.Router();
 const VALID_CATEGORIES = ['Men', 'Women', 'Gift Sets'];
@@ -61,11 +61,12 @@ function byIdMap(products) {
   return new Map(products.map(p => [p.id, p]));
 }
 
-// What shoppers see: for gift-set bundles, stock is the number of complete sets available.
+// What shoppers see: for gift sets, stock is the number of complete sets that can be sold.
+// (The raw lists of perfumes behind a set are for the admin only.)
 function publicProduct(p, byId) {
   const e = enrichProduct(p, byId);
-  const { bundle, availableStock, ...rest } = e;
-  if (isBundle(p)) rest.stock = availableStock;
+  const { bundle, pool, poolAll, availableStock, ...rest } = e;
+  if (isBundle(p) || isPickSet(p)) rest.stock = availableStock;
   return rest;
 }
 
@@ -78,61 +79,75 @@ function parseBundle(raw, products, selfId) {
   let list;
   try { list = typeof raw === 'string' ? JSON.parse(raw || '[]') : raw; } catch (e) { return { error: 'Invalid gift set contents' }; }
   if (!Array.isArray(list)) return { error: 'Invalid gift set contents' };
-  if (list.length > 3) return { error: 'A gift set can include at most 3 perfumes' };
+  if (list.length > 20) return { error: 'A gift set can include at most 20 different perfumes' };
 
   const byId = byIdMap(products);
-  const result = [];
-  const seen = new Set();
+  const merged = new Map();
   for (const item of list) {
-    if (!item) continue;
-    // Allow custom perfumes
-    if (item.custom || item.customName || (!item.productId && item.name) || (typeof item.productId === 'string' && item.productId.indexOf('custom_') === 0)) {
-      const name = (item.name || item.customName || '').trim();
-      if (!name) return { error: 'Custom perfume must have a name' };
-      const qty = Math.min(10, Math.max(1, parseInt(item.qty, 10) || 1));
-      let price = undefined;
-      if (item.price !== undefined && item.price !== null && item.price !== '') {
-        price = parseFloat(item.price);
-        if (isNaN(price) || price < 0) return { error: 'Invalid price for a perfume in the gift set' };
-      } else if (item.customPrice !== undefined && item.customPrice !== null && item.customPrice !== '') {
-        price = parseFloat(item.customPrice);
-        if (isNaN(price) || price < 0) return { error: 'Invalid price for a perfume in the gift set' };
-      }
-      const entry = { custom: true, name: name.slice(0, 120), productId: item.productId || ('custom_' + Date.now().toString(36)), qty };
-      if (price !== undefined) entry.price = price;
-      result.push(entry);
-      continue;
-    }
     const c = byId.get(item && item.productId);
     if (!c || c.id === selfId) return { error: 'One of the selected perfumes no longer exists' };
     if (c.category === 'Gift Sets') return { error: 'Only perfumes from Men or Women can be added to a gift set' };
-    const key = c.id;
-    if (seen.has(key)) {
-      const existing = result.find(r => r.productId === key && !r.custom);
-      if (existing) {
-        existing.qty = Math.min(10, (existing.qty || 1) + Math.min(10, Math.max(1, parseInt(item.qty, 10) || 1)));
-        continue;
-      }
-    }
-    seen.add(key);
     const qty = Math.min(10, Math.max(1, parseInt(item.qty, 10) || 1));
-    let price = undefined;
-    if (item.price !== undefined && item.price !== null && item.price !== '') {
-      price = parseFloat(item.price);
-      if (isNaN(price) || price < 0) return { error: 'Invalid price for a perfume in the gift set' };
-    } else if (item.customPrice !== undefined && item.customPrice !== null && item.customPrice !== '') {
-      price = parseFloat(item.customPrice);
-      if (isNaN(price) || price < 0) return { error: 'Invalid price for a perfume in the gift set' };
-    }
-    const entry = { productId: c.id, qty };
-    if (price !== undefined) entry.price = price;
-    result.push(entry);
+    merged.set(c.id, (merged.get(c.id) || 0) + qty);
   }
-  return { bundle: result };
+  return { bundle: [...merged.entries()].map(([productId, qty]) => ({ productId, qty: Math.min(qty, 10) })) };
 }
 
-function setsUsing(productId, products) {
+// Validates a "customer chooses N perfumes" set: how many to choose, and which perfumes they may choose from.
+function parsePick(body, products) {
+  const pickCount = parseInt(body.pickCount, 10);
+  if (!Number.isInteger(pickCount) || pickCount < 1 || pickCount > 10) {
+    return { error: 'Choose how many perfumes the customer picks (from 1 to 10)' };
+  }
+  if (body.poolAll === 'true' || body.poolAll === true) {
+    return { pickCount, poolAll: true, pool: [] };
+  }
+  let list;
+  try { list = typeof body.pool === 'string' ? JSON.parse(body.pool || '[]') : body.pool; } catch (e) { return { error: 'Invalid list of perfumes' }; }
+  if (!Array.isArray(list)) return { error: 'Invalid list of perfumes' };
+  const byId = byIdMap(products);
+  const pool = [];
+  for (const id of new Set(list.map(String))) {
+    const c = byId.get(id);
+    if (!c) return { error: 'One of the selected perfumes no longer exists' };
+    if (!SET_CATEGORIES.includes(c.category)) return { error: 'Only perfumes from Men or Women can be offered in a gift set' };
+    pool.push(c.id);
+  }
+  if (pool.length < pickCount) {
+    return { error: `Select at least ${pickCount} perfumes for customers to choose from (or tick "All perfumes")` };
+  }
+  return { pickCount, poolAll: false, pool };
+}
+
+// Applies the gift-set options from the form to a product.
+//   setType "choose": the customer picks `pickCount` perfumes, for one price you set
+//   setType "fixed":  the set is always the same perfumes
+// (Not sending setType leaves the set as it is. Sending only "bundle" means a fixed set, as before.)
+function applySetConfig(target, body, products) {
+  if (target.category !== 'Gift Sets') {
+    target.bundle = []; target.pickCount = 0; target.poolAll = false; target.pool = [];
+    return {};
+  }
+  const type = body.setType !== undefined ? body.setType : (body.bundle !== undefined ? 'fixed' : undefined);
+  if (type === undefined) return {};
+  if (type === 'choose') {
+    const parsed = parsePick(body, products);
+    if (parsed.error) return parsed;
+    target.pickCount = parsed.pickCount; target.poolAll = parsed.poolAll; target.pool = parsed.pool; target.bundle = [];
+  } else {
+    const parsed = parseBundle(body.bundle || '[]', products, target.id);
+    if (parsed.error) return parsed;
+    target.bundle = parsed.bundle; target.pickCount = 0; target.poolAll = false; target.pool = [];
+  }
+  return {};
+}
+
+// Fixed sets that contain this perfume / choose-your-own sets whose list includes it
+function fixedSetsUsing(productId, products) {
   return products.filter(p => isBundle(p) && p.bundle.some(b => b.productId === productId));
+}
+function pickSetsUsing(productId, products) {
+  return products.filter(p => isPickSet(p) && !p.poolAll && (p.pool || []).includes(productId));
 }
 
 // ---------- PUBLIC ----------
@@ -182,14 +197,6 @@ router.post('/admin', requireAdmin, upload.single('image'), async (req, res) => 
       return res.status(400).json({ error: 'Category must be Men, Women or Gift Sets' });
     }
 
-    let bundle = [];
-    if (category === 'Gift Sets' && req.body.bundle) {
-      const parsed = parseBundle(req.body.bundle, data.products, null);
-      if (parsed.error) return res.status(400).json({ error: parsed.error });
-      bundle = parsed.bundle;
-    }
-
-    const images = req.file ? await processImage(req.file.buffer) : { image: null, imageThumb: null };
     const product = {
       id: db.id('prod'),
       name,
@@ -198,11 +205,14 @@ router.post('/admin', requireAdmin, upload.single('image'), async (req, res) => 
       compareAtPrice: compareAtPrice ? parseFloat(compareAtPrice) : null,
       stock: stock !== undefined && stock !== '' ? Math.max(0, parseInt(stock, 10) || 0) : 0,
       description: cleanText(req.body.description, 2000),
-      bundle,
-      ...images,
+      bundle: [], pickCount: 0, poolAll: false, pool: [],
+      image: null, imageThumb: null,
       active: true,
       createdAt: new Date().toISOString()
     };
+    const setError = applySetConfig(product, req.body, data.products);
+    if (setError.error) return res.status(400).json({ error: setError.error });
+    if (req.file) Object.assign(product, await processImage(req.file.buffer));
     data.products.push(product);
     db.write(data);
     res.status(201).json(enrichProduct(product, byIdMap(data.products)));
@@ -228,18 +238,13 @@ router.put('/admin/:id', requireAdmin, upload.single('image'), async (req, res) 
       if (!VALID_CATEGORIES.includes(category)) {
         return res.status(400).json({ error: 'Category must be Men, Women or Gift Sets' });
       }
-      if (category === 'Gift Sets' && setsUsing(p.id, data.products).length > 0) {
+      if (category === 'Gift Sets' && (fixedSetsUsing(p.id, data.products).length || pickSetsUsing(p.id, data.products).length)) {
         return res.status(409).json({ error: 'This perfume is part of a gift set, so it cannot become a gift set itself. Remove it from the set first.' });
       }
       p.category = category;
     }
-    if (p.category !== 'Gift Sets') {
-      p.bundle = [];
-    } else if (req.body.bundle !== undefined) {
-      const parsed = parseBundle(req.body.bundle, data.products, p.id);
-      if (parsed.error) return res.status(400).json({ error: parsed.error });
-      p.bundle = parsed.bundle;
-    }
+    const setError = applySetConfig(p, req.body, data.products);
+    if (setError.error) return res.status(400).json({ error: setError.error });
     if (price !== undefined) p.price = Math.max(0, parseFloat(price) || 0);
     if (compareAtPrice !== undefined) p.compareAtPrice = compareAtPrice === '' ? null : parseFloat(compareAtPrice);
     if (stock !== undefined && stock !== '') p.stock = Math.max(0, parseInt(stock, 10) || 0);
@@ -266,17 +271,22 @@ router.delete('/admin/:id', requireAdmin, (req, res) => {
   const idx = data.products.findIndex(x => x.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Product not found' });
 
-  const usedIn = setsUsing(req.params.id, data.products);
+  // A fixed set can't lose a perfume (it would no longer be the set you made), so deleting is refused.
+  const usedIn = fixedSetsUsing(req.params.id, data.products);
   if (usedIn.length > 0) {
     return res.status(409).json({
       error: `This perfume is part of the gift set "${usedIn.map(s => s.name).join('", "')}". Remove it from the set first, or hide it instead of deleting.`
     });
   }
 
+  // A choose-your-own set just loses one option from its list.
+  const shrunk = pickSetsUsing(req.params.id, data.products);
+  for (const set of shrunk) set.pool = set.pool.filter(id => id !== req.params.id);
+
   const [removed] = data.products.splice(idx, 1);
   removeProductImages(removed);
   db.write(data);
-  res.json({ ok: true });
+  res.json({ ok: true, removedFromSets: shrunk.map(s => s.name) });
 });
 
 module.exports = router;
