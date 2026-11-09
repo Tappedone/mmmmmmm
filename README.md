@@ -6,7 +6,7 @@ name, **phone number**, city and address at checkout, pays **Cash on Delivery**,
 ## What's in it
 
 **Storefront**
-- On arrival it asks *What are you shopping for?* — Men / Women / Gift Sets
+- Opens straight to the products, with Men / Women / Gift Sets tabs at the top
 - Category filter, instant search, price sorting, product pages, bag, quick checkout
 - **Gift Sets** come in two kinds: a **"choose your own"** set (for example *any 3 perfumes for 550 DH* — the customer picks
   their 3 from a searchable list, and can't continue until they've chosen exactly 3), or a **fixed** set that shows what's inside

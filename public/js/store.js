@@ -437,19 +437,6 @@ document.getElementById('checkoutForm').addEventListener('submit', async (e) => 
 });
 
 
-// ---------------- Landing question ----------------
-function initLandingPicker() {
-  const picker = document.getElementById('landingPicker');
-  const dismiss = (category) => {
-    try { sessionStorage.setItem('mb_landing_seen', '1'); } catch (e) {}
-    document.documentElement.classList.add('seen');
-    picker.classList.add('hide');
-    if (category) setCategory(category);
-  };
-  document.querySelectorAll('.landing-btn').forEach(btn => { btn.onclick = () => dismiss(btn.dataset.cat); });
-  document.getElementById('landingSkip').onclick = () => dismiss(null);
-}
-
 // ---------------- WhatsApp buttons ----------------
 function applyWhatsApp() {
   const link = shopWhatsAppLink('Hello Maison Bennani, I have a question.');
@@ -462,7 +449,6 @@ function applyWhatsApp() {
 
 // ---------------- Start ----------------
 function init() {
-  initLandingPicker();
   renderCategoryNav();
   updateCartCount();
   loadProducts(); // starts right away, alongside the settings request below
